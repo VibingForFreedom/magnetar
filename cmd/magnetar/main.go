@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/magnetar/magnetar/internal/animedb"
 	"github.com/magnetar/magnetar/internal/api"
 	"github.com/magnetar/magnetar/internal/config"
 	"github.com/magnetar/magnetar/internal/crawler"
@@ -184,11 +185,21 @@ func runServe(fs *flag.FlagSet) error {
 		apiServer.SetCrawler(dhtCrawler)
 	}
 
+	// Start anime offline database if enabled
+	var adb *animedb.AnimeDB
+	if cfg.AnimeDBEnabled {
+		adb = animedb.New(logger)
+		if err := adb.Load(ctx); err != nil {
+			logger.Warn("anime DB initial load failed, will retry", "error", err)
+		}
+		go adb.Start(ctx)
+	}
+
 	// Start metadata matcher if enabled
 	var metaMatcher *matcher.Matcher
 	if cfg.MatchEnabled {
 		matchCfg := matcher.NewConfig(cfg)
-		metaMatcher = matcher.New(matchCfg, st, m, logger)
+		metaMatcher = matcher.New(matchCfg, st, adb, m, logger)
 
 		go func() {
 			if err := metaMatcher.Start(ctx); err != nil {

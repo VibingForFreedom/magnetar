@@ -36,6 +36,8 @@ type Config struct {
 	TMDBAPIKey       string
 	TVDBAPIKey       string
 
+	AnimeDBEnabled bool
+
 	BackupEnabled  bool
 	BackupPath     string
 	BackupSchedule string
@@ -75,6 +77,8 @@ func Load() (*Config, error) {
 		MatchMaxAttempts: getEnvInt("MAGNETAR_MATCH_MAX_ATTEMPTS", 4),
 		TMDBAPIKey:       getEnvString("MAGNETAR_TMDB_API_KEY", ""),
 		TVDBAPIKey:       getEnvString("MAGNETAR_TVDB_API_KEY", ""),
+
+		AnimeDBEnabled: getEnvBool("MAGNETAR_ANIMEDB_ENABLED", true),
 
 		BackupEnabled:  getEnvBool("MAGNETAR_BACKUP_ENABLED", false),
 		BackupPath:     getEnvString("MAGNETAR_BACKUP_PATH", "/data/backups"),

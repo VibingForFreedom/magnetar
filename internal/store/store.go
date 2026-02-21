@@ -370,6 +370,7 @@ type Store interface {
 	SearchByExternalID(ctx context.Context, id ExternalID) ([]*Torrent, error)
 	FetchUnmatched(ctx context.Context, limit int) ([]*Torrent, error)
 	UpdateMatchResult(ctx context.Context, infoHash []byte, m MatchResult) error
+	UpdateCategory(ctx context.Context, infoHash []byte, category Category) error
 	Stats(ctx context.Context) (*DBStats, error)
 	Migrate(ctx context.Context) error
 	Close() error

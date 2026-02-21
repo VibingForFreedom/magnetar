@@ -59,10 +59,9 @@ func TestMapCategory(t *testing.T) {
 			want:  store.CategoryAnime,
 		},
 		{
-			// The switch default branch must produce CategoryMovie.
-			name:  "unknown category defaults to CategoryMovie",
+			name:  "unknown category defaults to CategoryUnknown",
 			input: classify.Category(999),
-			want:  store.CategoryMovie,
+			want:  store.CategoryUnknown,
 		},
 	}
 
@@ -176,7 +175,7 @@ func TestBuildTorrent_MediaTorrent(t *testing.T) {
 	// A well-formed 1080p WEB-DL movie — must be recognised as media.
 	info := buildSingleFileInfo("Movie.Name.2024.1080p.WEB-DL.mkv", 4_000_000_000)
 
-	torrent, ok := c.buildTorrent(hash, info)
+	torrent, ok := c.buildTorrent(hash, info, 0)
 
 	if !ok {
 		t.Fatal("expected buildTorrent to return ok=true for a media torrent, got false")
@@ -237,7 +236,7 @@ func TestBuildTorrent_TVShow(t *testing.T) {
 
 	info := buildSingleFileInfo("Breaking.Bad.S01E01.720p.BluRay.mkv", 1_500_000_000)
 
-	torrent, ok := c.buildTorrent(hash, info)
+	torrent, ok := c.buildTorrent(hash, info, 0)
 
 	if !ok {
 		t.Fatal("expected ok=true for a TV show torrent, got false")
@@ -262,7 +261,7 @@ func TestBuildTorrent_AnimeTorrent(t *testing.T) {
 	// Typical fansub-style anime name with a sub-group tag.
 	info := buildSingleFileInfo("[SubGroup] Anime Show - 01 [1080p][HEVC].mkv", 800_000_000)
 
-	torrent, ok := c.buildTorrent(hash, info)
+	torrent, ok := c.buildTorrent(hash, info, 0)
 
 	if !ok {
 		t.Fatal("expected ok=true for an anime torrent, got false")
@@ -284,7 +283,7 @@ func TestBuildTorrent_NonMediaTorrent(t *testing.T) {
 	// Generic software archive — must be rejected as non-media.
 	info := buildSingleFileInfo("random-software-v1.2.zip", 50_000_000)
 
-	torrent, ok := c.buildTorrent(hash, info)
+	torrent, ok := c.buildTorrent(hash, info, 0)
 
 	if ok {
 		t.Error("expected ok=false for a non-media torrent, got true")
@@ -303,7 +302,7 @@ func TestBuildTorrent_NonMediaNoExtension(t *testing.T) {
 	// A name with no media signals whatsoever and no year/quality.
 	info := buildSingleFileInfo("SomeRandomDataDump12345", 10_000_000)
 
-	torrent, ok := c.buildTorrent(hash, info)
+	torrent, ok := c.buildTorrent(hash, info, 0)
 
 	if ok {
 		t.Error("expected ok=false for an ambiguous non-media name, got true")
@@ -332,7 +331,7 @@ func TestBuildTorrent_FileTruncation(t *testing.T) {
 	}
 	info := buildMultiFileInfo("Movie.2020.1080p.BluRay", files)
 
-	torrent, ok := c.buildTorrent(hash, info)
+	torrent, ok := c.buildTorrent(hash, info, 0)
 
 	if !ok {
 		t.Fatal("expected ok=true for a multi-file media torrent, got false")
@@ -360,7 +359,7 @@ func TestBuildTorrent_FileTruncation_ZeroThreshold(t *testing.T) {
 	// Use a name that is classified as media by name alone (no file list needed).
 	info := buildSingleFileInfo("Interstellar.2014.2160p.UHD.BluRay.mkv", 30_000_000_000)
 
-	torrent, ok := c.buildTorrent(hash, info)
+	torrent, ok := c.buildTorrent(hash, info, 0)
 
 	if !ok {
 		t.Fatal("expected ok=true for UHD movie with zero threshold, got false")
@@ -388,7 +387,7 @@ func TestBuildTorrent_SizeField(t *testing.T) {
 
 	info := buildSingleFileInfo("Dune.2021.1080p.IMAX.WEB-DL.mkv", wantSize)
 
-	torrent, ok := c.buildTorrent(hash, info)
+	torrent, ok := c.buildTorrent(hash, info, 0)
 
 	if !ok {
 		t.Fatal("expected ok=true, got false")
@@ -406,7 +405,7 @@ func TestBuildTorrent_UHDQuality(t *testing.T) {
 
 	info := buildSingleFileInfo("Oppenheimer.2023.2160p.HDR.BluRay.mkv", 25_000_000_000)
 
-	torrent, ok := c.buildTorrent(hash, info)
+	torrent, ok := c.buildTorrent(hash, info, 0)
 
 	if !ok {
 		t.Fatal("expected ok=true for UHD torrent, got false")
@@ -424,7 +423,7 @@ func TestBuildTorrent_SDQuality(t *testing.T) {
 
 	info := buildSingleFileInfo("OldMovie.1998.480p.DVDRip.xvid.avi", 700_000_000)
 
-	torrent, ok := c.buildTorrent(hash, info)
+	torrent, ok := c.buildTorrent(hash, info, 0)
 
 	if !ok {
 		t.Fatal("expected ok=true for SD torrent, got false")
@@ -454,7 +453,7 @@ func TestBuildTorrent_MultiFileMediaClassifiedByFiles(t *testing.T) {
 	}
 	info := buildMultiFileInfo("SomeShowPack", files)
 
-	torrent, ok := c.buildTorrent(hash, info)
+	torrent, ok := c.buildTorrent(hash, info, 0)
 
 	if !ok {
 		t.Fatal("expected ok=true for multi-file video pack, got false")
@@ -476,7 +475,7 @@ func TestBuildTorrent_InfoHashCopied(t *testing.T) {
 	wantHash := makeInfoHash(0xFF)
 	info := buildSingleFileInfo("Film.2022.1080p.WEB-DL.mkv", 5_000_000_000)
 
-	torrent, ok := c.buildTorrent(wantHash, info)
+	torrent, ok := c.buildTorrent(wantHash, info, 0)
 
 	if !ok {
 		t.Fatal("expected ok=true, got false")

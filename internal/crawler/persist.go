@@ -27,7 +27,7 @@ func (c *Crawler) runPersistTorrents(ctx context.Context) {
 				}
 				hashMap[item.infoHash] = item
 
-				t, ok := c.buildTorrent(item.infoHash, item.metaInfo)
+				t, ok := c.buildTorrent(item.infoHash, item.metaInfo, item.peerCount)
 				if !ok {
 					continue
 				}
@@ -63,7 +63,7 @@ func (c *Crawler) runPersistTorrents(ctx context.Context) {
 // buildTorrent converts raw metainfo into a store.Torrent,
 // applying classification and media filtering.
 // Returns false if the torrent is not media (should be discarded).
-func (c *Crawler) buildTorrent(hash protocol.ID, info metainfo.Info) (*store.Torrent, bool) {
+func (c *Crawler) buildTorrent(hash protocol.ID, info metainfo.Info, peerCount int) (*store.Torrent, bool) {
 	name := info.BestName()
 
 	// Build file list for classification
@@ -94,15 +94,23 @@ func (c *Crawler) buildTorrent(hash protocol.ID, info metainfo.Info) (*store.Tor
 
 	now := time.Now().Unix()
 
+	storeCat := mapCategory(cat)
+
+	// Discard non-media torrents (Unknown category with no media files)
+	if storeCat == store.CategoryUnknown && !classify.HasMediaFiles(classifyFiles) {
+		return nil, false
+	}
+
 	t := &store.Torrent{
 		InfoHash:     hash[:],
 		Name:         name,
 		Size:         info.TotalLength(),
-		Category:     mapCategory(cat),
+		Category:     storeCat,
 		Quality:      mapQuality(quality),
 		Files:        storeFiles,
 		MediaYear:    parsed.Year,
 		IMDBID:       parsed.IMDBID,
+		Seeders:      peerCount,
 		Source:       store.SourceDHT,
 		DiscoveredAt: now,
 		UpdatedAt:    now,

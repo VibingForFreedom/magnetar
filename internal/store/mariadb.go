@@ -597,6 +597,30 @@ func (s *MariaDBStore) UpdateMatchResult(ctx context.Context, infoHash []byte, m
 	return nil
 }
 
+func (s *MariaDBStore) UpdateCategory(ctx context.Context, infoHash []byte, category Category) error {
+	if len(infoHash) != 20 {
+		return ErrInvalidHash
+	}
+
+	result, err := s.db.ExecContext(ctx,
+		`UPDATE torrents SET category = ?, updated_at = ? WHERE info_hash = ?`,
+		category, time.Now().Unix(), infoHash,
+	)
+	if err != nil {
+		return fmt.Errorf("updating category: %w", err)
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("getting rows affected: %w", err)
+	}
+	if affected == 0 {
+		return ErrNotFound
+	}
+
+	return nil
+}
+
 func (s *MariaDBStore) Stats(ctx context.Context) (*DBStats, error) {
 	stats := &DBStats{}
 

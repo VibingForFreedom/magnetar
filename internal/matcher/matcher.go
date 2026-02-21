@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/magnetar/magnetar/internal/animedb"
 	"github.com/magnetar/magnetar/internal/classify"
 	"github.com/magnetar/magnetar/internal/metrics"
 	"github.com/magnetar/magnetar/internal/store"
@@ -35,6 +36,7 @@ type Matcher struct {
 	tvdb    *TVDBClient
 	anilist *AniListClient
 	kitsu   *KitsuClient
+	animedb *animedb.AnimeDB
 	cfg     Config
 	paused  atomic.Bool
 	logger  *slog.Logger
@@ -58,12 +60,13 @@ func (m *Matcher) IsPaused() bool {
 	return m.paused.Load()
 }
 
-func New(cfg Config, st store.Store, met *metrics.Metrics, logger *slog.Logger) *Matcher {
+func New(cfg Config, st store.Store, adb *animedb.AnimeDB, met *metrics.Metrics, logger *slog.Logger) *Matcher {
 	m := &Matcher{
 		store:   st,
 		metrics: met,
 		anilist: NewAniListClient(),
 		kitsu:   NewKitsuClient(),
+		animedb: adb,
 		cfg:     cfg,
 		logger:  logger.With("component", "matcher"),
 		stopped: make(chan struct{}),
@@ -168,7 +171,21 @@ func (m *Matcher) matchOne(ctx context.Context, t *store.Torrent) store.MatchRes
 		}
 	}
 
-	// Path 2: Dispatch by category
+	// Path 2: Reclassify Unknown → Anime if offline DB matches
+	if t.Category == store.CategoryUnknown && m.animedb != nil && m.animedb.IsLoaded() {
+		if m.animedb.Contains(parsed.Title) {
+			m.logger.Info("reclassifying unknown torrent as anime",
+				"info_hash", t.InfoHashHex(),
+				"title", parsed.Title,
+			)
+			if err := m.store.UpdateCategory(ctx, t.InfoHash, store.CategoryAnime); err != nil {
+				m.logger.Error("failed to update category", "error", err)
+			}
+			return m.matchAnime(ctx, t, parsed)
+		}
+	}
+
+	// Path 3: Dispatch by category
 	switch t.Category {
 	case store.CategoryMovie:
 		return m.matchMovie(ctx, t, parsed)
@@ -351,6 +368,27 @@ func (m *Matcher) matchTV(ctx context.Context, t *store.Torrent, parsed *classif
 func (m *Matcher) matchAnime(ctx context.Context, t *store.Torrent, parsed *classify.ParsedName) store.MatchResult {
 	title := parsed.Title
 	year := parsed.Year
+
+	// Try offline DB first for instant matching
+	if m.animedb != nil && m.animedb.IsLoaded() {
+		if entry := m.animedb.Lookup(title); entry != nil {
+			result := store.MatchResult{
+				Status:    store.MatchMatched,
+				AniListID: entry.AniListID,
+				KitsuID:   entry.KitsuID,
+				Year:      entry.Year,
+			}
+
+			m.logger.Info("matched anime via offline db",
+				"info_hash", t.InfoHashHex(),
+				"title", title,
+				"anilist_id", result.AniListID,
+				"kitsu_id", result.KitsuID,
+			)
+
+			return result
+		}
+	}
 
 	result := store.MatchResult{
 		Status: store.MatchFailed,
