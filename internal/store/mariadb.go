@@ -625,6 +625,17 @@ func (s *MariaDBStore) UpdateCategory(ctx context.Context, infoHash []byte, cate
 	return nil
 }
 
+func (s *MariaDBStore) ResetFailedMatches(ctx context.Context) (int64, error) {
+	result, err := s.db.ExecContext(ctx,
+		`UPDATE torrents SET match_status = 0, match_attempts = 0, match_after = 0, updated_at = ? WHERE match_status = 2`,
+		time.Now().Unix(),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("resetting failed matches: %w", err)
+	}
+	return result.RowsAffected()
+}
+
 func (s *MariaDBStore) Stats(ctx context.Context) (*DBStats, error) {
 	stats := &DBStats{}
 

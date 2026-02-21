@@ -43,6 +43,21 @@ func (s *Server) handleCrawlerToggle(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleRematch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	count, err := s.store.ResetFailedMatches(r.Context())
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, "failed to reset matches")
+		return
+	}
+
+	s.writeJSON(w, http.StatusOK, map[string]int64{"reset": count})
+}
+
 func (s *Server) handleMatcherToggle(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")

@@ -373,6 +373,7 @@ type Store interface {
 	FetchUnmatched(ctx context.Context, limit int) ([]*Torrent, error)
 	UpdateMatchResult(ctx context.Context, infoHash []byte, m MatchResult) error
 	UpdateCategory(ctx context.Context, infoHash []byte, category Category) error
+	ResetFailedMatches(ctx context.Context) (int64, error)
 	Stats(ctx context.Context) (*DBStats, error)
 	Migrate(ctx context.Context) error
 	Close() error

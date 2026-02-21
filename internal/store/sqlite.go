@@ -701,6 +701,17 @@ func (s *SQLiteStore) UpdateCategory(ctx context.Context, infoHash []byte, categ
 	return nil
 }
 
+func (s *SQLiteStore) ResetFailedMatches(ctx context.Context) (int64, error) {
+	result, err := s.writer.ExecContext(ctx,
+		`UPDATE torrents SET match_status = 0, match_attempts = 0, match_after = 0, updated_at = ? WHERE match_status = 2`,
+		time.Now().Unix(),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("resetting failed matches: %w", err)
+	}
+	return result.RowsAffected()
+}
+
 func (s *SQLiteStore) Stats(ctx context.Context) (*DBStats, error) {
 	stats := &DBStats{}
 

@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const manamiURL = "https://raw.githubusercontent.com/manami-project/anime-offline-database/master/anime-offline-database-minified.json"
+const manamiURL = "https://github.com/manami-project/anime-offline-database/releases/latest/download/anime-offline-database-minified.json"
 
 type manamiDatabase struct {
 	Data []manamiEntry `json:"data"`

@@ -67,6 +67,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/torrents/", s.handleHashGet)
 	mux.HandleFunc("/api/crawler/toggle", s.handleCrawlerToggle)
 	mux.HandleFunc("/api/matcher/toggle", s.handleMatcherToggle)
+	mux.HandleFunc("/api/matcher/rematch", s.handleRematch)
 	mux.Handle("/", web.Handler())
 
 	return s.withLogging(s.withAuth(mux))
