@@ -1,0 +1,31 @@
+# Binary
+magnetar
+/magnetar
+
+# Data
+*.db
+*.db-wal
+*.db-shm
+/data/
+
+# Environment
+.env
+*.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Build
+/dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+/logs/
