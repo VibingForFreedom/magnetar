@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -12,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/magnetar/magnetar/internal/api"
 	"github.com/magnetar/magnetar/internal/config"
 	"github.com/magnetar/magnetar/internal/store"
 )
@@ -135,7 +135,7 @@ func runServe(fs *flag.FlagSet) error {
 
 	httpServer := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Port),
-		Handler:      newHTTPHandler(st, logger),
+		Handler:      api.NewServer(st, cfg).Handler(),
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  120 * time.Second,
@@ -169,59 +169,6 @@ func runServe(fs *flag.FlagSet) error {
 
 	logger.Info("Magnetar server stopped")
 	return nil
-}
-
-func newHTTPHandler(st store.Store, logger *slog.Logger) http.Handler {
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
-	})
-
-	mux.HandleFunc("/api/stats", func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-		stats, err := st.Stats(ctx)
-		if err != nil {
-			logger.Error("failed to get stats", "error", err)
-			http.Error(w, "internal server error", http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(stats); err != nil {
-			logger.Error("failed to encode stats", "error", err)
-		}
-	})
-
-	return withLogging(mux, logger)
-}
-
-func withLogging(next http.Handler, logger *slog.Logger) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-
-		lrw := &loggingResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
-		next.ServeHTTP(lrw, r)
-
-		logger.Debug("HTTP request",
-			"method", r.Method,
-			"path", r.URL.Path,
-			"status", lrw.statusCode,
-			"duration", time.Since(start),
-			"remote", r.RemoteAddr,
-		)
-	})
-}
-
-type loggingResponseWriter struct {
-	http.ResponseWriter
-	statusCode int
-}
-
-func (lrw *loggingResponseWriter) WriteHeader(code int) {
-	lrw.statusCode = code
-	lrw.ResponseWriter.WriteHeader(code)
 }
 
 func runMigrate(args []string) error {
