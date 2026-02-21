@@ -90,6 +90,10 @@ func (s *MariaDBStore) Migrate(ctx context.Context) error {
 		`CREATE INDEX idx_category ON torrents(category, quality, media_year)`,
 		`CREATE INDEX idx_discovered ON torrents(discovered_at)`,
 		`CREATE INDEX idx_match_queue ON torrents(match_status, match_after)`,
+		`CREATE TABLE IF NOT EXISTS settings (
+			` + "`key`" + `   VARCHAR(255) NOT NULL PRIMARY KEY,
+			value VARCHAR(4000) NOT NULL
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 	}
 
 	for _, stmt := range statements {
@@ -668,6 +672,48 @@ func (s *MariaDBStore) Stats(ctx context.Context) (*DBStats, error) {
 	}
 
 	return stats, nil
+}
+
+func (s *MariaDBStore) GetSetting(ctx context.Context, key string) (string, error) {
+	var value string
+	err := s.db.QueryRowContext(ctx, "SELECT value FROM settings WHERE `key` = ?", key).Scan(&value)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", ErrSettingNotFound
+		}
+		return "", fmt.Errorf("getting setting %q: %w", key, err)
+	}
+	return value, nil
+}
+
+func (s *MariaDBStore) SetSetting(ctx context.Context, key, value string) error {
+	_, err := s.db.ExecContext(ctx,
+		"INSERT INTO settings (`key`, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)", key, value)
+	if err != nil {
+		return fmt.Errorf("setting %q: %w", key, err)
+	}
+	return nil
+}
+
+func (s *MariaDBStore) GetAllSettings(ctx context.Context) (map[string]string, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT `key`, value FROM settings")
+	if err != nil {
+		return nil, fmt.Errorf("querying settings: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	settings := make(map[string]string)
+	for rows.Next() {
+		var k, v string
+		if err := rows.Scan(&k, &v); err != nil {
+			return nil, fmt.Errorf("scanning setting: %w", err)
+		}
+		settings[k] = v
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating settings: %w", err)
+	}
+	return settings, nil
 }
 
 func (s *MariaDBStore) Close() error {

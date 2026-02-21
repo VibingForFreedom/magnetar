@@ -23,14 +23,20 @@ type Pausable interface {
 	IsPaused() bool
 }
 
+// Reconfigurable represents a component that can reload its configuration at runtime.
+type Reconfigurable interface {
+	Reconfigure()
+}
+
 type Server struct {
-	store   store.Store
-	cfg     *config.Config
-	metrics *metrics.Metrics
-	crawler Pausable
-	matcher Pausable
-	start   time.Time
-	logger  *log.Logger
+	store          store.Store
+	cfg            *config.Config
+	metrics        *metrics.Metrics
+	crawler        Pausable
+	matcher        Pausable
+	trackerScraper Reconfigurable
+	start          time.Time
+	logger         *log.Logger
 }
 
 func NewServer(st store.Store, cfg *config.Config, m *metrics.Metrics) *Server {
@@ -51,6 +57,11 @@ func (s *Server) SetCrawler(c Pausable) {
 // SetMatcher sets the matcher reference for runtime control.
 func (s *Server) SetMatcher(m Pausable) {
 	s.matcher = m
+}
+
+// SetTrackerScraper sets the tracker scraper reference for runtime reconfiguration.
+func (s *Server) SetTrackerScraper(t Reconfigurable) {
+	s.trackerScraper = t
 }
 
 func (s *Server) Handler() http.Handler {

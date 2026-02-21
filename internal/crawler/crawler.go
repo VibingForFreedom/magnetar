@@ -22,6 +22,7 @@ import (
 	"github.com/magnetar/magnetar/internal/crawler/protocol"
 	"github.com/magnetar/magnetar/internal/metrics"
 	"github.com/magnetar/magnetar/internal/store"
+	"github.com/magnetar/magnetar/internal/tracker"
 	boom "github.com/tylertreat/BoomFilters"
 )
 
@@ -49,6 +50,7 @@ type Crawler struct {
 	saveFilesThreshold           uint
 	store                        store.Store
 	metrics                      *metrics.Metrics
+	trackerScraper               *tracker.Scraper
 	paused                       atomic.Bool
 	ignoreHashes                 *ignoreHashes
 	soughtNodeID                 *concurrency.AtomicValue[protocol.ID]
@@ -71,6 +73,11 @@ func (c *Crawler) Resume() {
 // IsPaused returns whether the crawler is paused.
 func (c *Crawler) IsPaused() bool {
 	return c.paused.Load()
+}
+
+// SetTrackerScraper sets the tracker scraper for post-discovery scraping.
+func (c *Crawler) SetTrackerScraper(s *tracker.Scraper) {
+	c.trackerScraper = s
 }
 
 func (c *Crawler) start(ctx context.Context) {

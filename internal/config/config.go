@@ -36,6 +36,10 @@ type Config struct {
 	TMDBAPIKey       string
 	TVDBAPIKey       string
 
+	TrackerEnabled bool
+	TrackerList    []string
+	TrackerTimeout time.Duration
+
 	AnimeDBEnabled bool
 
 	BackupEnabled  bool
@@ -77,6 +81,10 @@ func Load() (*Config, error) {
 		MatchMaxAttempts: getEnvInt("MAGNETAR_MATCH_MAX_ATTEMPTS", 4),
 		TMDBAPIKey:       getEnvString("MAGNETAR_TMDB_API_KEY", ""),
 		TVDBAPIKey:       getEnvString("MAGNETAR_TVDB_API_KEY", ""),
+
+		TrackerEnabled: getEnvBool("MAGNETAR_TRACKER_ENABLED", false),
+		TrackerList:    getEnvStringSlice("MAGNETAR_TRACKER_LIST", nil),
+		TrackerTimeout: getEnvDuration("MAGNETAR_TRACKER_TIMEOUT", 5*time.Second),
 
 		AnimeDBEnabled: getEnvBool("MAGNETAR_ANIMEDB_ENABLED", true),
 
@@ -213,6 +221,23 @@ func getEnvBool(key string, def bool) bool {
 			return def
 		}
 		return b
+	}
+	return def
+}
+
+func getEnvStringSlice(key string, def []string) []string {
+	if val := os.Getenv(key); val != "" {
+		parts := strings.Split(val, ",")
+		result := make([]string, 0, len(parts))
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				result = append(result, p)
+			}
+		}
+		if len(result) > 0 {
+			return result
+		}
 	}
 	return def
 }

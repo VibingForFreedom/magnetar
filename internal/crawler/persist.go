@@ -8,6 +8,7 @@ import (
 	"github.com/magnetar/magnetar/internal/crawler/metainfo"
 	"github.com/magnetar/magnetar/internal/crawler/protocol"
 	"github.com/magnetar/magnetar/internal/store"
+	"github.com/magnetar/magnetar/internal/tracker"
 )
 
 // runPersistTorrents receives metadata from the pipeline, classifies it,
@@ -46,6 +47,10 @@ func (c *Crawler) runPersistTorrents(ctx context.Context) {
 				c.metrics.TorrentsSaved.Add(saved)
 				c.metrics.RecordDiscovery(saved)
 				c.logger.Debug("persisted torrents", "count", len(torrents))
+				// Fire tracker scrapes asynchronously at discovery time
+				if c.trackerScraper != nil {
+					c.fireTrackerScrapes(ctx, torrents)
+				}
 				// Forward to scrape channel for S/L counts
 				for _, item := range hashMap {
 					select {
@@ -144,6 +149,47 @@ func mapQuality(q classify.Quality) store.Quality {
 		return store.QualityUHD
 	default:
 		return store.QualityUnknown
+	}
+}
+
+// fireTrackerScrapes launches async tracker scrapes for newly persisted torrents.
+func (c *Crawler) fireTrackerScrapes(ctx context.Context, torrents []*store.Torrent) {
+	for _, t := range torrents {
+		go func(torrent *store.Torrent) {
+			var hash [20]byte
+			copy(hash[:], torrent.InfoHash)
+
+			result := c.trackerScraper.Scrape(ctx, hash)
+			if result.Seeders == 0 && result.Leechers == 0 {
+				return
+			}
+
+			c.updateTrackerCounts(ctx, torrent, result)
+		}(t)
+	}
+}
+
+func (c *Crawler) updateTrackerCounts(ctx context.Context, torrent *store.Torrent, result tracker.ScrapeResult) {
+	existing, err := c.store.GetTorrent(ctx, torrent.InfoHash)
+	if err != nil {
+		return
+	}
+
+	updated := false
+	if result.Seeders > existing.Seeders {
+		existing.Seeders = result.Seeders
+		updated = true
+	}
+	if result.Leechers > existing.Leechers {
+		existing.Leechers = result.Leechers
+		updated = true
+	}
+
+	if updated {
+		existing.UpdatedAt = time.Now().Unix()
+		if err := c.store.UpsertTorrent(ctx, existing); err != nil {
+			c.logger.Error("failed to update tracker counts", "error", err)
+		}
 	}
 }
 

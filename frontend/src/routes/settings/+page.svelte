@@ -2,6 +2,7 @@
 	import { fetchSettings, toggleCrawler, toggleMatcher, type Settings } from '$lib/api';
 	import SettingsSection from '$lib/components/SettingsSection.svelte';
 	import SettingsRow from '$lib/components/SettingsRow.svelte';
+	import SettingsEditRow from '$lib/components/SettingsEditRow.svelte';
 	import { Loader2 } from 'lucide-svelte';
 	import { onMount } from 'svelte';
 
@@ -42,6 +43,39 @@
 		} finally {
 			matcherToggling = false;
 		}
+	}
+
+	function onSettingUpdate(section: string, field: string) {
+		return (newValue: string) => {
+			if (!settings) return;
+			if (section === 'tracker') {
+				if (field === 'enabled') {
+					settings = { ...settings, tracker: { ...settings.tracker, enabled: newValue === 'true' } };
+				} else if (field === 'trackers') {
+					settings = { ...settings, tracker: { ...settings.tracker, trackers: newValue.split('\n').filter(Boolean) } };
+				} else if (field === 'timeout') {
+					settings = { ...settings, tracker: { ...settings.tracker, timeout: newValue } };
+				}
+			} else if (section === 'matcher') {
+				if (field === 'batch_size') {
+					settings = { ...settings, matcher: { ...settings.matcher, batch_size: Number(newValue) } };
+				} else if (field === 'interval') {
+					settings = { ...settings, matcher: { ...settings.matcher, interval: newValue } };
+				} else if (field === 'max_attempts') {
+					settings = { ...settings, matcher: { ...settings.matcher, max_attempts: Number(newValue) } };
+				}
+			} else if (section === 'crawler') {
+				if (field === 'rate') {
+					settings = { ...settings, crawler: { ...settings.crawler, rate: Number(newValue) } };
+				}
+			} else if (section === 'general') {
+				if (field === 'log_level') {
+					settings = { ...settings, general: { ...settings.general, log_level: newValue } };
+				} else if (field === 'animedb_enabled') {
+					settings = { ...settings, general: { ...settings.general, animedb_enabled: newValue === 'true' } };
+				}
+			}
+		};
 	}
 </script>
 
@@ -97,6 +131,13 @@
 				{/if}
 				<SettingsRow label="Workers" value={settings.crawler.workers} />
 				<SettingsRow label="DHT Port" value={settings.crawler.port} />
+				<SettingsEditRow
+					label="Rate"
+					settingKey="crawl_rate"
+					value={settings.crawler.rate}
+					type="number"
+					onUpdate={onSettingUpdate('crawler', 'rate')}
+				/>
 			</SettingsSection>
 
 			<SettingsSection title="Matcher">
@@ -126,10 +167,70 @@
 						</div>
 					</div>
 				{/if}
-				<SettingsRow label="Batch Size" value={settings.matcher.batch_size} />
-				<SettingsRow label="Interval" value={settings.matcher.interval} />
+				<SettingsEditRow
+					label="Batch Size"
+					settingKey="match_batch_size"
+					value={settings.matcher.batch_size}
+					type="number"
+					onUpdate={onSettingUpdate('matcher', 'batch_size')}
+				/>
+				<SettingsEditRow
+					label="Interval"
+					settingKey="match_interval"
+					value={settings.matcher.interval}
+					type="text"
+					onUpdate={onSettingUpdate('matcher', 'interval')}
+				/>
+				<SettingsEditRow
+					label="Max Attempts"
+					settingKey="match_max_attempts"
+					value={settings.matcher.max_attempts}
+					type="number"
+					onUpdate={onSettingUpdate('matcher', 'max_attempts')}
+				/>
 				<SettingsRow label="TMDB" value={settings.matcher.tmdb_enabled} />
 				<SettingsRow label="TVDB" value={settings.matcher.tvdb_enabled} />
+			</SettingsSection>
+
+			<SettingsSection title="Tracker">
+				<SettingsEditRow
+					label="Enabled"
+					settingKey="tracker_enabled"
+					value={settings.tracker.enabled}
+					type="boolean"
+					onUpdate={onSettingUpdate('tracker', 'enabled')}
+				/>
+				<SettingsEditRow
+					label="Trackers"
+					settingKey="tracker_list"
+					value={settings.tracker.trackers.join('\n')}
+					type="textarea"
+					onUpdate={onSettingUpdate('tracker', 'trackers')}
+				/>
+				<SettingsEditRow
+					label="Timeout"
+					settingKey="tracker_timeout"
+					value={settings.tracker.timeout}
+					type="text"
+					onUpdate={onSettingUpdate('tracker', 'timeout')}
+				/>
+			</SettingsSection>
+
+			<SettingsSection title="General">
+				<SettingsEditRow
+					label="Log Level"
+					settingKey="log_level"
+					value={settings.general.log_level}
+					type="text"
+					onUpdate={onSettingUpdate('general', 'log_level')}
+				/>
+				<SettingsEditRow
+					label="Anime DB"
+					settingKey="animedb_enabled"
+					value={settings.general.animedb_enabled}
+					type="boolean"
+					onUpdate={onSettingUpdate('general', 'animedb_enabled')}
+				/>
 			</SettingsSection>
 
 			<SettingsSection title="API">

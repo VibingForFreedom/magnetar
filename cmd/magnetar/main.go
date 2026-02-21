@@ -18,6 +18,7 @@ import (
 	"github.com/magnetar/magnetar/internal/matcher"
 	"github.com/magnetar/magnetar/internal/metrics"
 	"github.com/magnetar/magnetar/internal/store"
+	"github.com/magnetar/magnetar/internal/tracker"
 )
 
 const (
@@ -130,6 +131,11 @@ func runServe(_ *flag.FlagSet) error { //nolint:unparam
 		}
 	}()
 
+	// Apply persisted settings overrides from database
+	if err := cfg.ApplyOverrides(ctx, st); err != nil {
+		logger.Warn("could not apply settings overrides", "error", err)
+	}
+
 	stats, err := st.Stats(ctx)
 	if err != nil {
 		logger.Warn("could not fetch initial stats", "error", err)
@@ -184,6 +190,17 @@ func runServe(_ *flag.FlagSet) error { //nolint:unparam
 
 		logger.Info("DHT crawler started", "port", cfg.CrawlPort, "workers", cfg.CrawlWorkers)
 		apiServer.SetCrawler(dhtCrawler)
+	}
+
+	// Create tracker scraper
+	trackerScraper := tracker.New(cfg, logger)
+	if dhtCrawler != nil {
+		dhtCrawler.SetTrackerScraper(trackerScraper)
+	}
+	apiServer.SetTrackerScraper(trackerScraper)
+
+	if cfg.TrackerEnabled {
+		logger.Info("tracker scraper enabled", "trackers", len(cfg.TrackerList))
 	}
 
 	// Start anime offline database if enabled

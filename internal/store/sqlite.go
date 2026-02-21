@@ -163,6 +163,11 @@ func (s *SQLiteStore) Migrate(ctx context.Context) error {
 	CREATE INDEX IF NOT EXISTS idx_category   ON torrents(category, quality, media_year);
 	CREATE INDEX IF NOT EXISTS idx_discovered ON torrents(discovered_at DESC);
 	CREATE INDEX IF NOT EXISTS idx_match_queue ON torrents(match_status, match_after) WHERE match_status != 1;
+
+	CREATE TABLE IF NOT EXISTS settings (
+		key   TEXT PRIMARY KEY,
+		value TEXT NOT NULL
+	) STRICT;
 	`
 
 	_, err := s.writer.ExecContext(ctx, schema)
@@ -740,6 +745,48 @@ func (s *SQLiteStore) Stats(ctx context.Context) (*DBStats, error) {
 	}
 
 	return stats, nil
+}
+
+func (s *SQLiteStore) GetSetting(ctx context.Context, key string) (string, error) {
+	var value string
+	err := s.reader.QueryRowContext(ctx, "SELECT value FROM settings WHERE key = ?", key).Scan(&value)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", ErrSettingNotFound
+		}
+		return "", fmt.Errorf("getting setting %q: %w", key, err)
+	}
+	return value, nil
+}
+
+func (s *SQLiteStore) SetSetting(ctx context.Context, key, value string) error {
+	_, err := s.writer.ExecContext(ctx,
+		"INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", key, value)
+	if err != nil {
+		return fmt.Errorf("setting %q: %w", key, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) GetAllSettings(ctx context.Context) (map[string]string, error) {
+	rows, err := s.reader.QueryContext(ctx, "SELECT key, value FROM settings")
+	if err != nil {
+		return nil, fmt.Errorf("querying settings: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	settings := make(map[string]string)
+	for rows.Next() {
+		var k, v string
+		if err := rows.Scan(&k, &v); err != nil {
+			return nil, fmt.Errorf("scanning setting: %w", err)
+		}
+		settings[k] = v
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating settings: %w", err)
+	}
+	return settings, nil
 }
 
 func (s *SQLiteStore) Close() error {

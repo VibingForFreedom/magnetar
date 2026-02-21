@@ -73,14 +73,25 @@ export interface Settings {
 		paused: boolean;
 		workers: number;
 		port: number;
+		rate: number;
 	};
 	matcher: {
 		enabled: boolean;
 		paused: boolean;
 		batch_size: number;
 		interval: string;
+		max_attempts: number;
 		tmdb_enabled: boolean;
 		tvdb_enabled: boolean;
+	};
+	tracker: {
+		enabled: boolean;
+		trackers: string[];
+		timeout: string;
+	};
+	general: {
+		log_level: string;
+		animedb_enabled: boolean;
 	};
 	api: {
 		port: number;
@@ -136,8 +147,24 @@ export async function fetchLatest(params: LatestParams): Promise<SearchResponse>
 	return fetchJSON(`/api/torrents/latest?${query}`);
 }
 
+async function putJSON<T>(url: string, body: unknown): Promise<T> {
+	const resp = await fetch(`${BASE}${url}`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(body)
+	});
+	if (!resp.ok) {
+		throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+	}
+	return resp.json();
+}
+
 export async function fetchSettings(): Promise<Settings> {
 	return fetchJSON('/api/settings');
+}
+
+export async function putSetting(key: string, value: string): Promise<{ status: string; key: string }> {
+	return putJSON('/api/settings', { key, value });
 }
 
 export async function toggleCrawler(paused: boolean): Promise<ToggleResponse> {

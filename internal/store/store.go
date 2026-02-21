@@ -375,6 +375,9 @@ type Store interface {
 	UpdateCategory(ctx context.Context, infoHash []byte, category Category) error
 	ResetFailedMatches(ctx context.Context) (int64, error)
 	Stats(ctx context.Context) (*DBStats, error)
+	GetSetting(ctx context.Context, key string) (string, error)
+	SetSetting(ctx context.Context, key, value string) error
+	GetAllSettings(ctx context.Context) (map[string]string, error)
 	Migrate(ctx context.Context) error
 	Close() error
 	Checkpoint(ctx context.Context) error
@@ -382,7 +385,8 @@ type Store interface {
 }
 
 var (
-	ErrNotFound     = fmt.Errorf("torrent not found")
-	ErrInvalidHash  = fmt.Errorf("invalid info hash")
-	ErrInvalidInput = fmt.Errorf("invalid input")
+	ErrNotFound        = fmt.Errorf("torrent not found")
+	ErrInvalidHash     = fmt.Errorf("invalid info hash")
+	ErrInvalidInput    = fmt.Errorf("invalid input")
+	ErrSettingNotFound = fmt.Errorf("setting not found")
 )
