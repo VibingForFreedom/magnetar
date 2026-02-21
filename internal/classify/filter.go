@@ -9,9 +9,10 @@ import (
 type Category int
 
 const (
-	CategoryMovie Category = iota
-	CategoryTV
-	CategoryAnime
+	CategoryMovie   Category = 0
+	CategoryTV      Category = 1
+	CategoryAnime   Category = 2
+	CategoryUnknown Category = 3
 )
 
 func (c Category) String() string {
@@ -32,47 +33,40 @@ type File struct {
 	Size int64  `json:"size"`
 }
 
-func Classify(name string, files []File) (Category, bool) {
+func Classify(name string, files []File) Category {
 	if IsAnime(name) {
-		return CategoryAnime, true
+		return CategoryAnime
 	}
 
 	if IsTV(name) {
-		return CategoryTV, true
+		return CategoryTV
 	}
 
 	if IsMovie(name) {
-		return CategoryMovie, true
+		return CategoryMovie
 	}
 
 	if HasMediaFiles(files) {
-		return guessFromFiles(files)
+		cat, confident := guessFromFiles(files)
+		if confident {
+			return cat
+		}
 	}
 
-	return CategoryMovie, false
+	return CategoryUnknown
 }
 
 func IsAnime(name string) bool {
-	if animeSubGroupPattern.MatchString(name) {
-		return true
-	}
-
 	n := strings.ToLower(name)
 
+	// Strong anime keywords — if present with episode numbering, it's anime
 	animeKeywords := []string{
 		"fansub",
-		"subs",
 		"anime",
-		"hevc",
 		"hi10p",
 		"hi10",
-		"10bit",
 		"dual-audio",
 		"dual audio",
-		"uncensored",
-		"unc",
-		"bdrip",
-		"dubbed",
 	}
 
 	for _, kw := range animeKeywords {
@@ -81,6 +75,11 @@ func IsAnime(name string) bool {
 				return true
 			}
 		}
+	}
+
+	// [SubGroup] Title - Episode pattern (must have episode number)
+	if animeSubGroupPattern.MatchString(name) && animeEpisodePattern.MatchString(name) {
+		return true
 	}
 
 	for _, indicator := range animeIndicators {

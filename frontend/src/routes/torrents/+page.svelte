@@ -10,7 +10,8 @@
 		{ value: undefined, label: 'All Categories' },
 		{ value: 0, label: 'Movies' },
 		{ value: 1, label: 'TV' },
-		{ value: 2, label: 'Anime' }
+		{ value: 2, label: 'Anime' },
+		{ value: 3, label: 'Other' }
 	];
 
 	const qualities = [

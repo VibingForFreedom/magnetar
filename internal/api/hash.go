@@ -15,16 +15,17 @@ type hashLookupRequest struct {
 }
 
 type torrentResponse struct {
-	InfoHash string         `json:"info_hash"`
-	Name     string         `json:"name"`
-	Size     int64          `json:"size"`
-	Category store.Category `json:"category"`
-	Quality  store.Quality  `json:"quality"`
-	Files    []store.File   `json:"files"`
-	IMDBID   string         `json:"imdb_id"`
-	TMDBID   int            `json:"tmdb_id"`
-	Seeders  int            `json:"seeders"`
-	Leechers int            `json:"leechers"`
+	InfoHash     string         `json:"info_hash"`
+	Name         string         `json:"name"`
+	Size         int64          `json:"size"`
+	Category     store.Category `json:"category"`
+	Quality      store.Quality  `json:"quality"`
+	Files        []store.File   `json:"files"`
+	IMDBID       string         `json:"imdb_id"`
+	TMDBID       int            `json:"tmdb_id"`
+	Seeders      int            `json:"seeders"`
+	Leechers     int            `json:"leechers"`
+	DiscoveredAt int64          `json:"discovered_at"`
 }
 
 func (s *Server) handleHashGet(w http.ResponseWriter, r *http.Request) {
@@ -156,15 +157,16 @@ func torrentResponseFromStore(t *store.Torrent) torrentResponse {
 		return torrentResponse{}
 	}
 	return torrentResponse{
-		InfoHash: t.InfoHashHex(),
-		Name:     t.Name,
-		Size:     t.Size,
-		Category: t.Category,
-		Quality:  t.Quality,
-		Files:    t.Files,
-		IMDBID:   t.IMDBID,
-		TMDBID:   t.TMDBID,
-		Seeders:  t.Seeders,
-		Leechers: t.Leechers,
+		InfoHash:     t.InfoHashHex(),
+		Name:         t.Name,
+		Size:         t.Size,
+		Category:     t.Category,
+		Quality:      t.Quality,
+		Files:        t.Files,
+		IMDBID:       t.IMDBID,
+		TMDBID:       t.TMDBID,
+		Seeders:      t.Seeders,
+		Leechers:     t.Leechers,
+		DiscoveredAt: t.DiscoveredAt,
 	}
 }

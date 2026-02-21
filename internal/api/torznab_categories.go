@@ -26,6 +26,9 @@ const (
 	CatTVWebDL = 5010
 	CatTVAnime = 5070
 	CatTVOther = 5050
+
+	// Other (7000-7099)
+	CatOther = 7000
 )
 
 // MapToNewznab converts internal category+quality+source info to Newznab category IDs.
@@ -94,6 +97,9 @@ func MapToNewznab(t *store.Torrent, parsed *classify.ParsedName) []int {
 	case store.CategoryAnime:
 		add(CatTV)
 		add(CatTVAnime)
+
+	case store.CategoryUnknown:
+		add(CatOther)
 	}
 
 	return cats

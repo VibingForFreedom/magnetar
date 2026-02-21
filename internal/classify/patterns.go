@@ -106,11 +106,10 @@ var (
 	imdbIDPattern = compile(`(tt\d{7,9})`)
 
 	animeIndicators = []*regexp.Regexp{
-		compile(`^\[[^\]]+\]`),
+		compile(`^\[[^\]]+\]\s*[^\[]+\s*[\s._-]\d{2,4}(?:v\d)?(?:[\s._\[(]|$)`),
 		compile(`(?i)\[.*?(?:fansub|subs?|anime)\]`),
-		compile(`(?i)[\s._-](10bit|Hi10P|Hi10|Hi444PP)[\s._-]`),
+		compile(`(?i)[\s._-](Hi10P|Hi10|Hi444PP)[\s._-]`),
 		compile(`(?i)[\s._-](Dual[\s._-]?Audio)[\s._-]`),
-		compile(`(?i)[\s._-](UNCENSORED|Uncensored)[\s._-]`),
 	}
 
 	tvIndicators = []*regexp.Regexp{
@@ -119,7 +118,6 @@ var (
 		compile(`(?i)Complete[\s._-]?Series`),
 		compile(`(?i)\d{1,2}x\d{2,3}`),
 		compile(`(?i)Episode[\s._]?\d{1,3}`),
-		compile(`(?i)[\s._-]EP?(\d{1,3})[\s._-]`),
 	}
 
 	movieIndicators = []*regexp.Regexp{

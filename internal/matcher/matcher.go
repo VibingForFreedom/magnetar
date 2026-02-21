@@ -176,6 +176,13 @@ func (m *Matcher) matchOne(ctx context.Context, t *store.Torrent) store.MatchRes
 		return m.matchTV(ctx, t, parsed)
 	case store.CategoryAnime:
 		return m.matchAnime(ctx, t, parsed)
+	case store.CategoryUnknown:
+		// Try movie match first, fall back to TV
+		result := m.matchMovie(ctx, t, parsed)
+		if result.Status == store.MatchMatched {
+			return result
+		}
+		return m.matchTV(ctx, t, parsed)
 	default:
 		return m.matchMovie(ctx, t, parsed)
 	}

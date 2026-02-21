@@ -86,11 +86,7 @@ func (c *Crawler) buildTorrent(hash protocol.ID, info metainfo.Info) (*store.Tor
 	}
 
 	// Classify the torrent
-	cat, isMedia := classify.Classify(name, classifyFiles)
-	if !isMedia {
-		c.logger.Debug("discarding non-media torrent", "name", name)
-		return nil, false
-	}
+	cat := classify.Classify(name, classifyFiles)
 
 	// Parse name for metadata extraction
 	parsed := classify.Parse(name)
@@ -124,7 +120,7 @@ func mapCategory(c classify.Category) store.Category {
 	case classify.CategoryAnime:
 		return store.CategoryAnime
 	default:
-		return store.CategoryMovie
+		return store.CategoryUnknown
 	}
 }
 

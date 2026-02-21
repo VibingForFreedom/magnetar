@@ -355,44 +355,38 @@ func TestParseAnime(t *testing.T) {
 
 func TestClassify(t *testing.T) {
 	tests := []struct {
-		name          string
-		input         string
-		files         []File
-		wantCategory  Category
-		wantClassable bool
+		name         string
+		input        string
+		files        []File
+		wantCategory Category
 	}{
 		{
-			name:          "TV Show by name",
-			input:         "The.Last.of.Us.S01E01.1080p.WEB-DL-GROUP",
-			wantCategory:  CategoryTV,
-			wantClassable: true,
+			name:         "TV Show by name",
+			input:        "The.Last.of.Us.S01E01.1080p.WEB-DL-GROUP",
+			wantCategory: CategoryTV,
 		},
 		{
-			name:          "Movie by name",
-			input:         "Oppenheimer.2023.2160p.WEB-DL-GROUP",
-			wantCategory:  CategoryMovie,
-			wantClassable: true,
+			name:         "Movie by name",
+			input:        "Oppenheimer.2023.2160p.WEB-DL-GROUP",
+			wantCategory: CategoryMovie,
 		},
 		{
-			name:          "Anime by fansub pattern",
-			input:         "[SubGroup] Anime Name - 01 [1080p].mkv",
-			wantCategory:  CategoryAnime,
-			wantClassable: true,
+			name:         "Anime by fansub pattern",
+			input:        "[SubGroup] Anime Name - 01 [1080p].mkv",
+			wantCategory: CategoryAnime,
 		},
 		{
-			name:          "Anime with dual audio",
-			input:         "Anime.Title.S01.Dual.Audio.1080p-GROUP",
-			wantCategory:  CategoryAnime,
-			wantClassable: true,
+			name:         "Anime with dual audio",
+			input:        "Anime.Title.S01.Dual.Audio.1080p-GROUP",
+			wantCategory: CategoryAnime,
 		},
 		{
-			name:  "Unknown with media files",
+			name:  "Single media file guessed as movie",
 			input: "Some.Unknown.Release",
 			files: []File{
 				{Path: "video.mkv", Size: 1000000000},
 			},
-			wantCategory:  CategoryMovie,
-			wantClassable: true,
+			wantCategory: CategoryMovie,
 		},
 		{
 			name:  "TV by file count",
@@ -405,20 +399,31 @@ func TestClassify(t *testing.T) {
 				{Path: "Episode05.mkv", Size: 500000000},
 				{Path: "Episode06.mkv", Size: 500000000},
 			},
-			wantCategory:  CategoryTV,
-			wantClassable: true,
+			wantCategory: CategoryTV,
+		},
+		{
+			name:         "Unknown - JAV code",
+			input:        "CAWD-062",
+			wantCategory: CategoryUnknown,
+		},
+		{
+			name:         "Unknown - random string",
+			input:        "some-random-file-without-media-indicators",
+			wantCategory: CategoryUnknown,
+		},
+		{
+			name:         "Unknown - release group prefix not anime",
+			input:        "[TGx] Some Random Release",
+			wantCategory: CategoryUnknown,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotCat, gotClassable := Classify(tt.input, tt.files)
+			gotCat := Classify(tt.input, tt.files)
 
 			if gotCat != tt.wantCategory {
 				t.Errorf("Category = %v, want %v", gotCat, tt.wantCategory)
-			}
-			if gotClassable != tt.wantClassable {
-				t.Errorf("Classable = %v, want %v", gotClassable, tt.wantClassable)
 			}
 		})
 	}

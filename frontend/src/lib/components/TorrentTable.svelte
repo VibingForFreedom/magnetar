@@ -24,6 +24,7 @@
 			case 'movie': return 'Movie';
 			case 'tv': return 'TV';
 			case 'anime': return 'Anime';
+			case 'unknown': return 'Other';
 			default: return cat;
 		}
 	}
@@ -33,7 +34,7 @@
 			case 'movie': return 'bg-accent-blue/15 text-accent-blue';
 			case 'tv': return 'bg-accent-green/15 text-accent-green';
 			case 'anime': return 'bg-accent-purple/15 text-accent-purple';
-			default: return 'bg-border text-text-secondary';
+			default: return 'bg-border/50 text-text-secondary';
 		}
 	}
 

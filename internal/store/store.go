@@ -10,9 +10,10 @@ import (
 type Category int
 
 const (
-	CategoryMovie Category = iota
-	CategoryTV
-	CategoryAnime
+	CategoryMovie   Category = 0
+	CategoryTV      Category = 1
+	CategoryAnime   Category = 2
+	CategoryUnknown Category = 3
 )
 
 func (c Category) String() string {
@@ -36,8 +37,10 @@ func ParseCategory(s string) Category {
 		return CategoryTV
 	case "anime":
 		return CategoryAnime
+	case "unknown", "other":
+		return CategoryUnknown
 	default:
-		return CategoryMovie
+		return CategoryUnknown
 	}
 }
 
