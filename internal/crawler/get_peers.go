@@ -12,6 +12,9 @@ import (
 
 func (c *Crawler) runGetPeers(ctx context.Context) {
 	_ = c.getPeers.Run(ctx, func(req nodeHasPeersForHash) {
+		if c.paused.Load() {
+			return
+		}
 		pfh, pfhErr := c.requestPeersForHash(ctx, req)
 		if pfhErr != nil {
 			return

@@ -143,9 +143,11 @@ func runServe(fs *flag.FlagSet) error {
 
 	m := metrics.New()
 
+	apiServer := api.NewServer(st, cfg, m)
+
 	httpServer := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Port),
-		Handler:      api.NewServer(st, cfg, m).Handler(),
+		Handler:      apiServer.Handler(),
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 0, // Disabled for SSE support
 		IdleTimeout:  120 * time.Second,
@@ -179,6 +181,7 @@ func runServe(fs *flag.FlagSet) error {
 		}()
 
 		logger.Info("DHT crawler started", "port", cfg.CrawlPort, "workers", cfg.CrawlWorkers)
+		apiServer.SetCrawler(dhtCrawler)
 	}
 
 	// Start metadata matcher if enabled
@@ -197,6 +200,7 @@ func runServe(fs *flag.FlagSet) error {
 			"interval", cfg.MatchInterval,
 			"batch_size", cfg.MatchBatchSize,
 		)
+		apiServer.SetMatcher(metaMatcher)
 	}
 
 	select {

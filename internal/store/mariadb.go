@@ -307,6 +307,86 @@ func (s *MariaDBStore) DeleteTorrent(ctx context.Context, infoHash []byte) error
 	return nil
 }
 
+func (s *MariaDBStore) ListRecent(ctx context.Context, opts SearchOpts) (*SearchResult, error) {
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+
+	countSQL := `SELECT COUNT(*) FROM torrents`
+	searchSQL := `SELECT ` + torrentSelectColumns + ` FROM torrents`
+
+	var args []interface{}
+	var whereClauses []string
+
+	if len(opts.Categories) > 0 {
+		placeholders := ""
+		for i, cat := range opts.Categories {
+			if i > 0 {
+				placeholders += ","
+			}
+			placeholders += "?"
+			args = append(args, cat)
+		}
+		whereClauses = append(whereClauses, fmt.Sprintf("category IN (%s)", placeholders))
+	}
+	if len(opts.Quality) > 0 {
+		placeholders := ""
+		for i, q := range opts.Quality {
+			if i > 0 {
+				placeholders += ","
+			}
+			placeholders += "?"
+			args = append(args, q)
+		}
+		whereClauses = append(whereClauses, fmt.Sprintf("quality IN (%s)", placeholders))
+	}
+
+	if len(whereClauses) > 0 {
+		where := " WHERE " + strings.Join(whereClauses, " AND ")
+		countSQL += where
+		searchSQL += where
+	}
+
+	countArgs := make([]interface{}, len(args))
+	copy(countArgs, args)
+
+	var total int
+	if err := s.db.QueryRowContext(ctx, countSQL, countArgs...).Scan(&total); err != nil {
+		return nil, fmt.Errorf("counting results: %w", err)
+	}
+
+	searchSQL += " ORDER BY discovered_at DESC LIMIT ? OFFSET ?"
+	args = append(args, limit, opts.Offset)
+
+	rows, err := s.db.QueryContext(ctx, searchSQL, args...)
+	if err != nil {
+		return nil, fmt.Errorf("querying recent torrents: %w", err)
+	}
+	defer rows.Close()
+
+	var torrents []*Torrent
+	for rows.Next() {
+		t, err := scanRow(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scanning torrent: %w", err)
+		}
+		torrents = append(torrents, t)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating rows: %w", err)
+	}
+
+	return &SearchResult{
+		Torrents: torrents,
+		Total:    total,
+	}, nil
+}
+
 func (s *MariaDBStore) SearchByName(ctx context.Context, query string, opts SearchOpts) (*SearchResult, error) {
 	limit := opts.Limit
 	if limit <= 0 {

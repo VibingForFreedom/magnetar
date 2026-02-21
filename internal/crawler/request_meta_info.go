@@ -12,6 +12,9 @@ import (
 
 func (c *Crawler) runRequestMetaInfo(ctx context.Context) {
 	_ = c.requestMetaInfo.Run(ctx, func(req infoHashWithPeers) {
+		if c.paused.Load() {
+			return
+		}
 		mi, reqErr := c.doRequestMetaInfo(ctx, req.infoHash, req.peers)
 		if reqErr != nil {
 			c.metrics.MetadataFailed.Add(1)

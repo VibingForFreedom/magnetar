@@ -362,6 +362,7 @@ type Store interface {
 	GetTorrent(ctx context.Context, infoHash []byte) (*Torrent, error)
 	BulkLookup(ctx context.Context, hashes [][]byte) ([]*Torrent, error)
 	DeleteTorrent(ctx context.Context, infoHash []byte) error
+	ListRecent(ctx context.Context, opts SearchOpts) (*SearchResult, error)
 	SearchByName(ctx context.Context, query string, opts SearchOpts) (*SearchResult, error)
 	SearchByExternalID(ctx context.Context, id ExternalID) ([]*Torrent, error)
 	FetchUnmatched(ctx context.Context, limit int) ([]*Torrent, error)

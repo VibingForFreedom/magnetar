@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { LayoutDashboard, Search, Settings, Magnet } from 'lucide-svelte';
+	import { LayoutDashboard, Database, Settings, Magnet } from 'lucide-svelte';
 
 	const links = [
 		{ href: '/', label: 'Dashboard', icon: LayoutDashboard },
-		{ href: '/search', label: 'Search', icon: Search },
+		{ href: '/torrents', label: 'Torrents', icon: Database },
 		{ href: '/settings', label: 'Settings', icon: Settings }
 	];
 </script>

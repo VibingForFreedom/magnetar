@@ -3,10 +3,12 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -363,6 +365,95 @@ func (s *SQLiteStore) DeleteTorrent(ctx context.Context, infoHash []byte) error 
 	}
 
 	return nil
+}
+
+func (s *SQLiteStore) ListRecent(ctx context.Context, opts SearchOpts) (*SearchResult, error) {
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+
+	countQuery := `SELECT COUNT(*) FROM torrents`
+	searchQuery := `
+	SELECT info_hash, name, size, category, quality, files,
+		imdb_id, tmdb_id, tvdb_id, anilist_id, kitsu_id, media_year,
+		match_status, match_attempts, match_after,
+		seeders, leechers, source, discovered_at, updated_at
+	FROM torrents`
+
+	var args []interface{}
+	var whereClauses []string
+
+	if len(opts.Categories) > 0 {
+		placeholders := ""
+		for i, cat := range opts.Categories {
+			if i > 0 {
+				placeholders += ","
+			}
+			placeholders += "?"
+			args = append(args, cat)
+		}
+		whereClauses = append(whereClauses, fmt.Sprintf("category IN (%s)", placeholders))
+	}
+	if len(opts.Quality) > 0 {
+		placeholders := ""
+		for i, q := range opts.Quality {
+			if i > 0 {
+				placeholders += ","
+			}
+			placeholders += "?"
+			args = append(args, q)
+		}
+		whereClauses = append(whereClauses, fmt.Sprintf("quality IN (%s)", placeholders))
+	}
+
+	if len(whereClauses) > 0 {
+		where := " WHERE " + strings.Join(whereClauses, " AND ")
+		countQuery += where
+		searchQuery += where
+	}
+
+	searchQuery += " ORDER BY discovered_at DESC LIMIT ? OFFSET ?"
+
+	var total int
+	countArgs := make([]interface{}, len(args))
+	copy(countArgs, args)
+	if err := s.reader.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total); err != nil {
+		return nil, fmt.Errorf("counting results: %w", err)
+	}
+
+	args = append(args, limit, opts.Offset)
+	rows, err := s.reader.QueryContext(ctx, searchQuery, args...)
+	if err != nil {
+		return nil, fmt.Errorf("querying recent torrents: %w", err)
+	}
+	defer rows.Close()
+
+	var torrents []*Torrent
+	for rows.Next() {
+		t := &Torrent{}
+		var filesJSON []byte
+		if err := rows.Scan(
+			&t.InfoHash, &t.Name, &t.Size, &t.Category, &t.Quality, &filesJSON,
+			&t.IMDBID, &t.TMDBID, &t.TVDBID, &t.AniListID, &t.KitsuID, &t.MediaYear,
+			&t.MatchStatus, &t.MatchAttempts, &t.MatchAfter,
+			&t.Seeders, &t.Leechers, &t.Source, &t.DiscoveredAt, &t.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scanning row: %w", err)
+		}
+		if len(filesJSON) > 0 {
+			_ = json.Unmarshal(filesJSON, &t.Files)
+		}
+		torrents = append(torrents, t)
+	}
+
+	return &SearchResult{
+		Torrents: torrents,
+		Total:    total,
+	}, nil
 }
 
 func (s *SQLiteStore) SearchByName(ctx context.Context, query string, opts SearchOpts) (*SearchResult, error) {

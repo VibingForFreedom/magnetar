@@ -56,6 +56,13 @@ export interface SearchParams {
 	quality?: number;
 }
 
+export interface LatestParams {
+	page?: number;
+	limit?: number;
+	category?: number;
+	quality?: number;
+}
+
 export interface Settings {
 	database: {
 		backend: string;
@@ -63,11 +70,13 @@ export interface Settings {
 	};
 	crawler: {
 		enabled: boolean;
+		paused: boolean;
 		workers: number;
 		port: number;
 	};
 	matcher: {
 		enabled: boolean;
+		paused: boolean;
 		batch_size: number;
 		interval: string;
 		tmdb_enabled: boolean;
@@ -79,8 +88,25 @@ export interface Settings {
 	};
 }
 
+export interface ToggleResponse {
+	component: string;
+	paused: boolean;
+}
+
 async function fetchJSON<T>(url: string): Promise<T> {
 	const resp = await fetch(`${BASE}${url}`);
+	if (!resp.ok) {
+		throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+	}
+	return resp.json();
+}
+
+async function postJSON<T>(url: string, body: unknown): Promise<T> {
+	const resp = await fetch(`${BASE}${url}`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(body)
+	});
 	if (!resp.ok) {
 		throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
 	}
@@ -101,8 +127,25 @@ export async function search(params: SearchParams): Promise<SearchResponse> {
 	return fetchJSON(`/api/search?${query}`);
 }
 
+export async function fetchLatest(params: LatestParams): Promise<SearchResponse> {
+	const query = new URLSearchParams();
+	if (params.page) query.set('page', String(params.page));
+	if (params.limit) query.set('limit', String(params.limit));
+	if (params.category !== undefined) query.set('category', String(params.category));
+	if (params.quality !== undefined) query.set('quality', String(params.quality));
+	return fetchJSON(`/api/torrents/latest?${query}`);
+}
+
 export async function fetchSettings(): Promise<Settings> {
 	return fetchJSON('/api/settings');
+}
+
+export async function toggleCrawler(paused: boolean): Promise<ToggleResponse> {
+	return postJSON('/api/crawler/toggle', { paused });
+}
+
+export async function toggleMatcher(paused: boolean): Promise<ToggleResponse> {
+	return postJSON('/api/matcher/toggle', { paused });
 }
 
 export function connectSSE(onMessage: (snap: MetricsSnapshot) => void): EventSource {

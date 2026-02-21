@@ -16,10 +16,19 @@ import (
 	"github.com/magnetar/magnetar/internal/web"
 )
 
+// Pausable represents a component that can be paused and resumed at runtime.
+type Pausable interface {
+	Pause()
+	Resume()
+	IsPaused() bool
+}
+
 type Server struct {
 	store   store.Store
 	cfg     *config.Config
 	metrics *metrics.Metrics
+	crawler Pausable
+	matcher Pausable
 	start   time.Time
 	logger  *log.Logger
 }
@@ -34,6 +43,16 @@ func NewServer(st store.Store, cfg *config.Config, m *metrics.Metrics) *Server {
 	}
 }
 
+// SetCrawler sets the crawler reference for runtime control.
+func (s *Server) SetCrawler(c Pausable) {
+	s.crawler = c
+}
+
+// SetMatcher sets the matcher reference for runtime control.
+func (s *Server) SetMatcher(m Pausable) {
+	s.matcher = m
+}
+
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
@@ -43,8 +62,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/search", s.handleSearch)
 	mux.HandleFunc("/api/settings", s.handleSettings)
 	mux.HandleFunc("/api/torznab", s.handleTorznab)
+	mux.HandleFunc("/api/torrents/latest", s.handleLatest)
 	mux.HandleFunc("/api/torrents/lookup", s.handleHashBulk)
 	mux.HandleFunc("/api/torrents/", s.handleHashGet)
+	mux.HandleFunc("/api/crawler/toggle", s.handleCrawlerToggle)
+	mux.HandleFunc("/api/matcher/toggle", s.handleMatcherToggle)
 	mux.Handle("/", web.Handler())
 
 	return s.withLogging(s.withAuth(mux))

@@ -25,7 +25,7 @@ func (c *Crawler) getNodesForSampleInfoHashes(ctx context.Context) {
 
 func (c *Crawler) runSampleInfoHashes(ctx context.Context) {
 	_ = c.nodesForSampleInfoHashes.Run(ctx, func(n ktable.Node) {
-		if !n.IsSampleInfoHashesCandidate() {
+		if c.paused.Load() || !n.IsSampleInfoHashesCandidate() {
 			return
 		}
 		res, err := c.client.SampleInfoHashes(ctx, n.Addr(), c.soughtNodeID.Get())

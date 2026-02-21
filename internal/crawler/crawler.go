@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/netip"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/magnetar/magnetar/internal/crawler/bloom"
@@ -48,10 +49,28 @@ type Crawler struct {
 	saveFilesThreshold           uint
 	store                        store.Store
 	metrics                      *metrics.Metrics
+	paused                       atomic.Bool
 	ignoreHashes                 *ignoreHashes
 	soughtNodeID                 *concurrency.AtomicValue[protocol.ID]
 	stopped                      chan struct{}
 	logger                       *slog.Logger
+}
+
+// Pause stops the crawler from processing new hashes while keeping connections alive.
+func (c *Crawler) Pause() {
+	c.paused.Store(true)
+	c.logger.Info("crawler paused")
+}
+
+// Resume resumes crawler processing.
+func (c *Crawler) Resume() {
+	c.paused.Store(false)
+	c.logger.Info("crawler resumed")
+}
+
+// IsPaused returns whether the crawler is paused.
+func (c *Crawler) IsPaused() bool {
+	return c.paused.Load()
 }
 
 func (c *Crawler) start(ctx context.Context) {

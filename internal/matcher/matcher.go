@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/magnetar/magnetar/internal/classify"
@@ -35,8 +36,26 @@ type Matcher struct {
 	anilist *AniListClient
 	kitsu   *KitsuClient
 	cfg     Config
+	paused  atomic.Bool
 	logger  *slog.Logger
 	stopped chan struct{}
+}
+
+// Pause stops the matcher from processing new batches.
+func (m *Matcher) Pause() {
+	m.paused.Store(true)
+	m.logger.Info("matcher paused")
+}
+
+// Resume resumes matcher processing.
+func (m *Matcher) Resume() {
+	m.paused.Store(false)
+	m.logger.Info("matcher resumed")
+}
+
+// IsPaused returns whether the matcher is paused.
+func (m *Matcher) IsPaused() bool {
+	return m.paused.Load()
 }
 
 func New(cfg Config, st store.Store, met *metrics.Metrics, logger *slog.Logger) *Matcher {
@@ -92,6 +111,9 @@ func (m *Matcher) Stop() {
 }
 
 func (m *Matcher) processBatch(ctx context.Context) {
+	if m.paused.Load() {
+		return
+	}
 	torrents, err := m.store.FetchUnmatched(ctx, m.cfg.BatchSize)
 	if err != nil {
 		m.logger.Error("fetching unmatched torrents", "error", err)
