@@ -13,6 +13,7 @@ import (
 
 	"github.com/magnetar/magnetar/internal/api"
 	"github.com/magnetar/magnetar/internal/config"
+	"github.com/magnetar/magnetar/internal/crawler"
 	"github.com/magnetar/magnetar/internal/store"
 )
 
@@ -149,6 +150,28 @@ func runServe(fs *flag.FlagSet) error {
 		}
 	}()
 
+	// Start DHT crawler if enabled
+	var dhtCrawler *crawler.Crawler
+	if cfg.CrawlEnabled {
+		crawlCfg := crawler.NewDefaultConfig()
+		crawlCfg.Port = uint16(cfg.CrawlPort)
+		crawlCfg.ScalingFactor = uint(cfg.CrawlWorkers)
+
+		var crawlErr error
+		dhtCrawler, crawlErr = crawler.New(crawlCfg, st, logger)
+		if crawlErr != nil {
+			return fmt.Errorf("initializing DHT crawler: %w", crawlErr)
+		}
+
+		go func() {
+			if err := dhtCrawler.Start(ctx); err != nil {
+				logger.Error("DHT crawler error", "error", err)
+			}
+		}()
+
+		logger.Info("DHT crawler started", "port", cfg.CrawlPort, "workers", cfg.CrawlWorkers)
+	}
+
 	select {
 	case sig := <-sigChan:
 		logger.Info("received shutdown signal", "signal", sig)
@@ -158,6 +181,12 @@ func runServe(fs *flag.FlagSet) error {
 	}
 
 	cancel()
+
+	// Stop DHT crawler
+	if dhtCrawler != nil {
+		logger.Info("stopping DHT crawler")
+		dhtCrawler.Stop()
+	}
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
