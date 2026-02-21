@@ -1,0 +1,285 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/magnetar/magnetar/internal/config"
+	"github.com/magnetar/magnetar/internal/store"
+)
+
+const (
+	Version   = "0.1.0-dev"
+	BuildDate = "unknown"
+)
+
+func main() {
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	if len(os.Args) < 2 {
+		return runServe(nil)
+	}
+
+	switch os.Args[1] {
+	case "serve":
+		fs := flag.NewFlagSet("serve", flag.ExitOnError)
+		if err := fs.Parse(os.Args[2:]); err != nil {
+			return fmt.Errorf("parsing flags: %w", err)
+		}
+		return runServe(fs)
+	case "migrate":
+		return runMigrate(os.Args[2:])
+	case "backup":
+		return runBackup(os.Args[2:])
+	case "version":
+		printVersion()
+		return nil
+	case "help", "-h", "--help":
+		printUsage()
+		return nil
+	default:
+		fmt.Fprintf(os.Stderr, "unknown command: %s\n\n", os.Args[1])
+		printUsage()
+		return fmt.Errorf("unknown command")
+	}
+}
+
+func printUsage() {
+	fmt.Println(`Magnetar - DHT Crawler & Torrent Classification Engine
+
+Usage:
+  magnetar [command] [flags]
+
+Commands:
+  serve     Start the Magnetar server (default)
+  migrate   Migrate data between backends
+  backup    Create a manual database backup
+  version   Print version information
+
+Flags:
+  -h, --help
+      Show help
+
+Use "magnetar [command] --help" for more information about a command.`)
+}
+
+func printVersion() {
+	fmt.Printf("Magnetar v%s (built %s)\n", Version, BuildDate)
+}
+
+func runServe(fs *flag.FlagSet) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
+	config.SetupLogging(cfg)
+
+	logger := slog.Default()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	logger.Info("starting Magnetar server",
+		"version", Version,
+		"port", cfg.Port,
+		"db_backend", cfg.DBBackend,
+		"db_path", cfg.DBPath,
+		"log_level", cfg.LogLevel,
+	)
+
+	var st store.Store
+	if cfg.IsSQLite() {
+		st, err = store.NewSQLiteStore(ctx, cfg)
+		if err != nil {
+			return fmt.Errorf("initializing sqlite store: %w", err)
+		}
+	} else {
+		return fmt.Errorf("unsupported database backend: %s", cfg.DBBackend)
+	}
+	defer func() {
+		logger.Info("closing database store")
+		if err := st.Close(); err != nil {
+			logger.Error("error closing store", "error", err)
+		}
+	}()
+
+	stats, err := st.Stats(ctx)
+	if err != nil {
+		logger.Warn("could not fetch initial stats", "error", err)
+	} else {
+		logger.Info("database initialized",
+			"total_torrents", stats.TotalTorrents,
+			"matched", stats.Matched,
+			"unmatched", stats.Unmatched,
+			"failed", stats.Failed,
+			"db_size_mb", stats.DBSize/1024/1024,
+		)
+	}
+
+	httpServer := &http.Server{
+		Addr:         fmt.Sprintf(":%d", cfg.Port),
+		Handler:      newHTTPHandler(st, logger),
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  120 * time.Second,
+	}
+
+	serverErr := make(chan error, 1)
+	go func() {
+		logger.Info("HTTP server listening", "addr", httpServer.Addr)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			serverErr <- err
+		}
+	}()
+
+	select {
+	case sig := <-sigChan:
+		logger.Info("received shutdown signal", "signal", sig)
+	case err := <-serverErr:
+		logger.Error("HTTP server error", "error", err)
+		return err
+	}
+
+	cancel()
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
+
+	logger.Info("shutting down HTTP server")
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		logger.Error("HTTP server shutdown error", "error", err)
+	}
+
+	logger.Info("Magnetar server stopped")
+	return nil
+}
+
+func newHTTPHandler(st store.Store, logger *slog.Logger) http.Handler {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
+
+	mux.HandleFunc("/api/stats", func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		stats, err := st.Stats(ctx)
+		if err != nil {
+			logger.Error("failed to get stats", "error", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(stats); err != nil {
+			logger.Error("failed to encode stats", "error", err)
+		}
+	})
+
+	return withLogging(mux, logger)
+}
+
+func withLogging(next http.Handler, logger *slog.Logger) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
+		lrw := &loggingResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+		next.ServeHTTP(lrw, r)
+
+		logger.Debug("HTTP request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", lrw.statusCode,
+			"duration", time.Since(start),
+			"remote", r.RemoteAddr,
+		)
+	})
+}
+
+type loggingResponseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (lrw *loggingResponseWriter) WriteHeader(code int) {
+	lrw.statusCode = code
+	lrw.ResponseWriter.WriteHeader(code)
+}
+
+func runMigrate(args []string) error {
+	fs := flag.NewFlagSet("migrate", flag.ExitOnError)
+	from := fs.String("from", "", "Source backend type (sqlite, mariadb)")
+	fromPath := fs.String("from-path", "", "Source database path or DSN")
+	to := fs.String("to", "", "Destination backend type (sqlite, mariadb)")
+	toDSN := fs.String("to-dsn", "", "Destination database DSN")
+
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("parsing flags: %w", err)
+	}
+
+	fmt.Println("Migrate command - not yet implemented")
+	fmt.Printf("  From: %s (%s)\n", *from, *fromPath)
+	fmt.Printf("  To: %s (%s)\n", *to, *toDSN)
+	fmt.Println("\nThis feature will be implemented in Phase 5.")
+	return nil
+}
+
+func runBackup(args []string) error {
+	fs := flag.NewFlagSet("backup", flag.ExitOnError)
+	output := fs.String("output", "", "Output path for backup file")
+
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("parsing flags: %w", err)
+	}
+
+	if *output == "" {
+		return fmt.Errorf("--output flag is required")
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
+	config.SetupLogging(cfg)
+	logger := slog.Default()
+
+	if !cfg.IsSQLite() {
+		return fmt.Errorf("backup is only supported for SQLite backend")
+	}
+
+	ctx := context.Background()
+
+	st, err := store.NewSQLiteStore(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("initializing store: %w", err)
+	}
+	defer st.Close()
+
+	logger.Info("creating backup", "output", *output)
+
+	if err := st.Backup(ctx, *output); err != nil {
+		return fmt.Errorf("creating backup: %w", err)
+	}
+
+	logger.Info("backup completed successfully", "path", *output)
+	return nil
+}
