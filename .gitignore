@@ -21,6 +21,9 @@
 # Build
 /dist/
 
+# Third-party sources
+/third_party/
+
 # OS
 .DS_Store
 Thumbs.db
