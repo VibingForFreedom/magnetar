@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/magnetar/magnetar/internal/config"
+	"github.com/magnetar/magnetar/internal/metrics"
 	"github.com/magnetar/magnetar/internal/store"
 )
 
@@ -40,7 +41,7 @@ func newTestStore(t *testing.T) (*store.SQLiteStore, *config.Config) {
 func newTestServer(t *testing.T) (*store.SQLiteStore, *httptest.Server) {
 	t.Helper()
 	st, cfg := newTestStore(t)
-	handler := NewServer(st, cfg).Handler()
+	handler := NewServer(st, cfg, metrics.New()).Handler()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 	return st, srv

@@ -14,8 +14,10 @@ func (c *Crawler) runRequestMetaInfo(ctx context.Context) {
 	_ = c.requestMetaInfo.Run(ctx, func(req infoHashWithPeers) {
 		mi, reqErr := c.doRequestMetaInfo(ctx, req.infoHash, req.peers)
 		if reqErr != nil {
+			c.metrics.MetadataFailed.Add(1)
 			return
 		}
+		c.metrics.MetadataFetched.Add(1)
 		select {
 		case <-ctx.Done():
 		case c.persistTorrents.In() <- infoHashWithMetaInfo{

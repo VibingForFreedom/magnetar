@@ -1,9 +1,12 @@
 GO_TAGS := sqlite_fts5
 GO_FLAGS := -tags "$(GO_TAGS)"
 
-.PHONY: build test test-race test-mariadb vet clean run
+.PHONY: build test test-race test-mariadb vet clean run frontend dev-frontend
 
-build:
+build: frontend
+	go build $(GO_FLAGS) ./...
+
+build-go:
 	go build $(GO_FLAGS) ./...
 
 test:
@@ -23,5 +26,14 @@ run:
 
 clean:
 	go clean -cache
+	rm -rf frontend/build frontend/.svelte-kit frontend/node_modules
+
+frontend:
+	cd frontend && npm ci && npm run build
+	rm -rf internal/web/static/_app internal/web/static/robots.txt
+	cp -r frontend/build/* internal/web/static/
+
+dev-frontend:
+	cd frontend && npm run dev
 
 .DEFAULT_GOAL := build

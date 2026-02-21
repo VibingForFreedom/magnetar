@@ -3,6 +3,8 @@ package api
 import (
 	"net/http"
 	"time"
+
+	"github.com/magnetar/magnetar/internal/metrics"
 )
 
 type dbStatsSummary struct {
@@ -21,8 +23,9 @@ type healthResponse struct {
 
 type statsResponse struct {
 	dbStatsSummary
-	Uptime    int64  `json:"uptime"`
-	StartTime string `json:"start_time"`
+	Uptime    int64            `json:"uptime"`
+	StartTime string           `json:"start_time"`
+	Metrics   *metrics.Snapshot `json:"metrics,omitempty"`
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -67,6 +70,11 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		},
 		Uptime:    uptime,
 		StartTime: s.start.UTC().Format(time.RFC3339),
+	}
+
+	if s.metrics != nil {
+		snap := s.metrics.Snapshot()
+		resp.Metrics = &snap
 	}
 
 	s.writeJSON(w, http.StatusOK, resp)

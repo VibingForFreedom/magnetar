@@ -11,22 +11,26 @@ import (
 	"time"
 
 	"github.com/magnetar/magnetar/internal/config"
+	"github.com/magnetar/magnetar/internal/metrics"
 	"github.com/magnetar/magnetar/internal/store"
+	"github.com/magnetar/magnetar/internal/web"
 )
 
 type Server struct {
-	store  store.Store
-	cfg    *config.Config
-	start  time.Time
-	logger *log.Logger
+	store   store.Store
+	cfg     *config.Config
+	metrics *metrics.Metrics
+	start   time.Time
+	logger  *log.Logger
 }
 
-func NewServer(st store.Store, cfg *config.Config) *Server {
+func NewServer(st store.Store, cfg *config.Config, m *metrics.Metrics) *Server {
 	return &Server{
-		store:  st,
-		cfg:    cfg,
-		start:  time.Now(),
-		logger: log.Default(),
+		store:   st,
+		cfg:     cfg,
+		metrics: m,
+		start:   time.Now(),
+		logger:  log.Default(),
 	}
 }
 
@@ -35,9 +39,13 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/api/stats", s.handleStats)
+	mux.HandleFunc("/api/events", s.handleSSE)
+	mux.HandleFunc("/api/search", s.handleSearch)
+	mux.HandleFunc("/api/settings", s.handleSettings)
 	mux.HandleFunc("/api/torznab", s.handleTorznab)
 	mux.HandleFunc("/api/torrents/lookup", s.handleHashBulk)
 	mux.HandleFunc("/api/torrents/", s.handleHashGet)
+	mux.Handle("/", web.Handler())
 
 	return s.withLogging(s.withAuth(mux))
 }
@@ -143,4 +151,10 @@ type statusWriter struct {
 func (w *statusWriter) WriteHeader(status int) {
 	w.status = status
 	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *statusWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
 }

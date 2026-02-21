@@ -41,6 +41,10 @@ func (c *Crawler) runPersistTorrents(ctx context.Context) {
 			if err := c.store.UpsertTorrents(ctx, torrents); err != nil {
 				c.logger.Error("failed to persist torrents", "error", err)
 			} else {
+				saved := int64(len(torrents))
+				c.metrics.TorrentsDiscovered.Add(saved)
+				c.metrics.TorrentsSaved.Add(saved)
+				c.metrics.RecordDiscovery(saved)
 				c.logger.Debug("persisted torrents", "count", len(torrents))
 				// Forward to scrape channel for S/L counts
 				for _, item := range hashMap {

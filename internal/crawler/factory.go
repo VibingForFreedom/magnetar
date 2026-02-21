@@ -14,12 +14,13 @@ import (
 	"github.com/magnetar/magnetar/internal/crawler/metainfo/banning"
 	"github.com/magnetar/magnetar/internal/crawler/metainfo/metainforequester"
 	"github.com/magnetar/magnetar/internal/crawler/protocol"
+	"github.com/magnetar/magnetar/internal/metrics"
 	"github.com/magnetar/magnetar/internal/store"
 	boom "github.com/tylertreat/BoomFilters"
 )
 
 // New creates and returns a new DHT Crawler wired to the given Store.
-func New(cfg Config, st store.Store, logger *slog.Logger) (*Crawler, error) {
+func New(cfg Config, st store.Store, m *metrics.Metrics, logger *slog.Logger) (*Crawler, error) {
 	nodeID := protocol.RandomNodeIDWithClientSuffix()
 	kTable := ktable.NewTable(nodeID)
 	scalingFactor := int(cfg.ScalingFactor)
@@ -74,6 +75,7 @@ func New(cfg Config, st store.Store, logger *slog.Logger) (*Crawler, error) {
 		saveFilesThreshold: cfg.SaveFilesThreshold,
 		rescrapeThreshold:  cfg.RescrapeThreshold,
 		store:              st,
+		metrics:            m,
 		ignoreHashes: &ignoreHashes{
 			bloom: boom.NewStableBloomFilter(10_000_000, 2, 0.001),
 		},

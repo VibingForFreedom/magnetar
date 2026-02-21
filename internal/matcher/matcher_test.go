@@ -13,6 +13,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/magnetar/magnetar/internal/config"
+	"github.com/magnetar/magnetar/internal/metrics"
 	"github.com/magnetar/magnetar/internal/store"
 )
 
@@ -743,7 +744,7 @@ func TestMatcherNew(t *testing.T) {
 			TMDBAPIKey: "tmdb-key",
 			TVDBAPIKey: "tvdb-key",
 		}
-		m := New(cfg, nil, testLogger())
+		m := New(cfg, nil, metrics.New(), testLogger())
 
 		if m.tmdb == nil {
 			t.Error("expected tmdb client to be created")
@@ -761,7 +762,7 @@ func TestMatcherNew(t *testing.T) {
 
 	t.Run("without API keys", func(t *testing.T) {
 		cfg := Config{}
-		m := New(cfg, nil, testLogger())
+		m := New(cfg, nil, metrics.New(), testLogger())
 
 		if m.tmdb != nil {
 			t.Error("expected tmdb client to be nil")

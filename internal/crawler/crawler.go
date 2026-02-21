@@ -19,6 +19,7 @@ import (
 	"github.com/magnetar/magnetar/internal/crawler/metainfo/banning"
 	"github.com/magnetar/magnetar/internal/crawler/metainfo/metainforequester"
 	"github.com/magnetar/magnetar/internal/crawler/protocol"
+	"github.com/magnetar/magnetar/internal/metrics"
 	"github.com/magnetar/magnetar/internal/store"
 	boom "github.com/tylertreat/BoomFilters"
 )
@@ -46,6 +47,7 @@ type Crawler struct {
 	rescrapeThreshold            time.Duration
 	saveFilesThreshold           uint
 	store                        store.Store
+	metrics                      *metrics.Metrics
 	ignoreHashes                 *ignoreHashes
 	soughtNodeID                 *concurrency.AtomicValue[protocol.ID]
 	stopped                      chan struct{}

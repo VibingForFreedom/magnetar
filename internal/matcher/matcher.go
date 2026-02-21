@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/magnetar/magnetar/internal/classify"
+	"github.com/magnetar/magnetar/internal/metrics"
 	"github.com/magnetar/magnetar/internal/store"
 )
 
@@ -28,6 +29,7 @@ func backoffDuration(attempts int) time.Duration {
 
 type Matcher struct {
 	store   store.Store
+	metrics *metrics.Metrics
 	tmdb    *TMDBClient
 	tvdb    *TVDBClient
 	anilist *AniListClient
@@ -37,9 +39,10 @@ type Matcher struct {
 	stopped chan struct{}
 }
 
-func New(cfg Config, st store.Store, logger *slog.Logger) *Matcher {
+func New(cfg Config, st store.Store, met *metrics.Metrics, logger *slog.Logger) *Matcher {
 	m := &Matcher{
 		store:   st,
+		metrics: met,
 		anilist: NewAniListClient(),
 		kitsu:   NewKitsuClient(),
 		cfg:     cfg,
@@ -110,7 +113,14 @@ func (m *Matcher) processBatch(ctx context.Context) {
 		default:
 		}
 
+		m.metrics.MatchAttempts.Add(1)
 		result := m.matchOne(ctx, t)
+		if result.Status == store.MatchMatched {
+			m.metrics.MatchSuccesses.Add(1)
+			m.metrics.RecordMatch(1)
+		} else {
+			m.metrics.MatchFailures.Add(1)
+		}
 		if err := m.store.UpdateMatchResult(ctx, t.InfoHash, result); err != nil {
 			m.logger.Error("updating match result",
 				"info_hash", t.InfoHashHex(),

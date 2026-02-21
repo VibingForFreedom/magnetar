@@ -30,6 +30,7 @@ func (c *Crawler) runPing(ctx context.Context) {
 				Reason: fmt.Errorf("failed to respond to ping: %w", err),
 			})
 		} else {
+			c.metrics.DHTNodesVisited.Add(1)
 			c.kTable.BatchCommand(ktable.PutNode{
 				ID:      nodeID,
 				Addr:    n.Addr(),

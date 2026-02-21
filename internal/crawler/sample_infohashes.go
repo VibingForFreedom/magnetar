@@ -44,6 +44,7 @@ func (c *Crawler) runSampleInfoHashes(ctx context.Context) {
 				})
 			}
 		}
+		c.metrics.DHTInfoHashesRecv.Add(int64(len(discoveredHashes)))
 		for _, h := range discoveredHashes {
 			select {
 			case <-ctx.Done():

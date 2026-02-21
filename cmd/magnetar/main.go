@@ -15,6 +15,7 @@ import (
 	"github.com/magnetar/magnetar/internal/config"
 	"github.com/magnetar/magnetar/internal/crawler"
 	"github.com/magnetar/magnetar/internal/matcher"
+	"github.com/magnetar/magnetar/internal/metrics"
 	"github.com/magnetar/magnetar/internal/store"
 )
 
@@ -140,11 +141,13 @@ func runServe(fs *flag.FlagSet) error {
 		)
 	}
 
+	m := metrics.New()
+
 	httpServer := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Port),
-		Handler:      api.NewServer(st, cfg).Handler(),
+		Handler:      api.NewServer(st, cfg, m).Handler(),
 		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		WriteTimeout: 0, // Disabled for SSE support
 		IdleTimeout:  120 * time.Second,
 	}
 
@@ -164,7 +167,7 @@ func runServe(fs *flag.FlagSet) error {
 		crawlCfg.ScalingFactor = uint(cfg.CrawlWorkers)
 
 		var crawlErr error
-		dhtCrawler, crawlErr = crawler.New(crawlCfg, st, logger)
+		dhtCrawler, crawlErr = crawler.New(crawlCfg, st, m, logger)
 		if crawlErr != nil {
 			return fmt.Errorf("initializing DHT crawler: %w", crawlErr)
 		}
@@ -182,7 +185,7 @@ func runServe(fs *flag.FlagSet) error {
 	var metaMatcher *matcher.Matcher
 	if cfg.MatchEnabled {
 		matchCfg := matcher.NewConfig(cfg)
-		metaMatcher = matcher.New(matchCfg, st, logger)
+		metaMatcher = matcher.New(matchCfg, st, m, logger)
 
 		go func() {
 			if err := metaMatcher.Start(ctx); err != nil {
