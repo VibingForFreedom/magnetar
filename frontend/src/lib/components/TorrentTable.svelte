@@ -12,7 +12,18 @@
 
 	function copyMagnet(hash: string, name: string) {
 		const magnet = `magnet:?xt=urn:btih:${hash}&dn=${encodeURIComponent(name)}`;
-		navigator.clipboard.writeText(magnet);
+		if (navigator.clipboard && window.isSecureContext) {
+			navigator.clipboard.writeText(magnet);
+		} else {
+			const ta = document.createElement('textarea');
+			ta.value = magnet;
+			ta.style.position = 'fixed';
+			ta.style.opacity = '0';
+			document.body.appendChild(ta);
+			ta.select();
+			document.execCommand('copy');
+			document.body.removeChild(ta);
+		}
 		copiedHash = hash;
 		setTimeout(() => {
 			copiedHash = null;
@@ -60,7 +71,7 @@
 				<th class="px-4 py-3 font-medium">Size</th>
 				<th class="px-4 py-3 font-medium">Category</th>
 				<th class="px-4 py-3 font-medium">Quality</th>
-				<th class="px-4 py-3 font-medium">S/L</th>
+				<th class="px-4 py-3 font-medium">Peers</th>
 				<th class="px-4 py-3 font-medium">Discovered</th>
 				<th class="px-4 py-3 font-medium w-10"></th>
 			</tr>
@@ -87,9 +98,7 @@
 						{/if}
 					</td>
 					<td class="whitespace-nowrap px-4 py-3 text-text-secondary">
-						<span class="text-accent-green">{torrent.seeders}</span>
-						/
-						<span class="text-accent-red">{torrent.leechers}</span>
+						<span class="{torrent.seeders > 0 ? 'text-accent-green' : ''}">{torrent.seeders}</span>
 					</td>
 					<td class="whitespace-nowrap px-4 py-3 text-text-secondary">
 						{formatTimestamp(torrent.discovered_at)}

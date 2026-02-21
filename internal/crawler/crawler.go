@@ -99,7 +99,8 @@ type nodeHasPeersForHash struct {
 
 type infoHashWithMetaInfo struct {
 	nodeHasPeersForHash
-	metaInfo metainfo.Info
+	metaInfo  metainfo.Info
+	peerCount int
 }
 
 type infoHashWithPeers struct {
