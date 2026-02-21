@@ -36,7 +36,7 @@ func Handler() http.Handler {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		f.Close()
+		_ = f.Close()
 
 		fileServer.ServeHTTP(w, r)
 	})

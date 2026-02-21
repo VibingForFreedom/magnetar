@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -33,7 +34,7 @@ func NewSQLiteStore(ctx context.Context, cfg *config.Config) (*SQLiteStore, erro
 	}
 
 	dataDir := filepath.Dir(cfg.DBPath)
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
+	if err := os.MkdirAll(dataDir, 0750); err != nil { //nolint:gosec // 0750 is intentional
 		return nil, fmt.Errorf("creating data directory: %w", err)
 	}
 
@@ -48,33 +49,33 @@ func NewSQLiteStore(ctx context.Context, cfg *config.Config) (*SQLiteStore, erro
 	s.writer.SetMaxOpenConns(1)
 
 	if err := s.runPragmas(ctx, s.writer); err != nil {
-		s.writer.Close()
+		_ = s.writer.Close()
 		return nil, fmt.Errorf("setting writer pragmas: %w", err)
 	}
 
 	readerDSN := fmt.Sprintf("%s?mode=ro&_journal_mode=WAL", cfg.DBPath)
 	s.reader, err = sql.Open("sqlite3", readerDSN)
 	if err != nil {
-		s.writer.Close()
+		_ = s.writer.Close()
 		return nil, fmt.Errorf("opening reader connection: %w", err)
 	}
 	s.reader.SetMaxOpenConns(runtime.NumCPU())
 
 	if err := s.runPragmas(ctx, s.reader); err != nil {
-		s.writer.Close()
-		s.reader.Close()
+		_ = s.writer.Close()
+		_ = s.reader.Close()
 		return nil, fmt.Errorf("setting reader pragmas: %w", err)
 	}
 
 	if err := s.IntegrityCheck(ctx); err != nil {
-		s.writer.Close()
-		s.reader.Close()
+		_ = s.writer.Close()
+		_ = s.reader.Close()
 		return nil, fmt.Errorf("integrity check failed: %w", err)
 	}
 
 	if err := s.Migrate(ctx); err != nil {
-		s.writer.Close()
-		s.reader.Close()
+		_ = s.writer.Close()
+		_ = s.reader.Close()
 		return nil, fmt.Errorf("migration failed: %w", err)
 	}
 
@@ -215,60 +216,61 @@ func (s *SQLiteStore) UpsertTorrents(ctx context.Context, ts []*Torrent) error {
 		if end > len(ts) {
 			end = len(ts)
 		}
-		batch := ts[i:end]
-
-		tx, err := s.writer.BeginTx(ctx, nil)
-		if err != nil {
-			return fmt.Errorf("beginning transaction: %w", err)
+		if err := s.upsertBatch(ctx, ts[i:end]); err != nil {
+			return err
 		}
-
-		stmt, err := tx.PrepareContext(ctx, `
-		INSERT OR REPLACE INTO torrents (
-			info_hash, name, size, category, quality, files,
-			imdb_id, tmdb_id, tvdb_id, anilist_id, kitsu_id, media_year,
-			match_status, match_attempts, match_after,
-			seeders, leechers, source, discovered_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-		if err != nil {
-			tx.Rollback()
-			return fmt.Errorf("preparing statement: %w", err)
-		}
-
-		for _, t := range batch {
-			if t == nil || len(t.InfoHash) != 20 {
-				stmt.Close()
-				tx.Rollback()
-				return ErrInvalidHash
-			}
-
-			filesBlob, err := compressFiles(t.Files)
-			if err != nil {
-				stmt.Close()
-				tx.Rollback()
-				return fmt.Errorf("compressing files: %w", err)
-			}
-
-			_, err = stmt.ExecContext(ctx,
-				t.InfoHash, t.Name, t.Size, t.Category, t.Quality, filesBlob,
-				nullString(t.IMDBID), nullInt(t.TMDBID), nullInt(t.TVDBID), nullInt(t.AniListID), nullInt(t.KitsuID), nullInt(t.MediaYear),
-				t.MatchStatus, t.MatchAttempts, t.MatchAfter,
-				t.Seeders, t.Leechers, t.Source, t.DiscoveredAt, t.UpdatedAt,
-			)
-			if err != nil {
-				stmt.Close()
-				tx.Rollback()
-				return fmt.Errorf("upserting torrent: %w", err)
-			}
-		}
-
-		stmt.Close()
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("committing transaction: %w", err)
-		}
-
-		s.insertCount.Add(int64(len(batch)))
+		s.insertCount.Add(int64(end - i))
 	}
 
+	return nil
+}
+
+func (s *SQLiteStore) upsertBatch(ctx context.Context, batch []*Torrent) error {
+	tx, err := s.writer.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("beginning transaction: %w", err)
+	}
+
+	stmt, err := tx.PrepareContext(ctx, `
+	INSERT OR REPLACE INTO torrents (
+		info_hash, name, size, category, quality, files,
+		imdb_id, tmdb_id, tvdb_id, anilist_id, kitsu_id, media_year,
+		match_status, match_attempts, match_after,
+		seeders, leechers, source, discovered_at, updated_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("preparing statement: %w", err)
+	}
+	defer func() { _ = stmt.Close() }()
+
+	for _, t := range batch {
+		if t == nil || len(t.InfoHash) != 20 {
+			_ = tx.Rollback()
+			return ErrInvalidHash
+		}
+
+		filesBlob, err := compressFiles(t.Files)
+		if err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("compressing files: %w", err)
+		}
+
+		_, err = stmt.ExecContext(ctx,
+			t.InfoHash, t.Name, t.Size, t.Category, t.Quality, filesBlob,
+			nullString(t.IMDBID), nullInt(t.TMDBID), nullInt(t.TVDBID), nullInt(t.AniListID), nullInt(t.KitsuID), nullInt(t.MediaYear),
+			t.MatchStatus, t.MatchAttempts, t.MatchAfter,
+			t.Seeders, t.Leechers, t.Source, t.DiscoveredAt, t.UpdatedAt,
+		)
+		if err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("upserting torrent: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing transaction: %w", err)
+	}
 	return nil
 }
 
@@ -287,7 +289,7 @@ func (s *SQLiteStore) GetTorrent(ctx context.Context, infoHash []byte) (*Torrent
 	row := s.reader.QueryRowContext(ctx, query, infoHash)
 	t, err := scanRow(row)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("querying torrent: %w", err)
@@ -316,6 +318,7 @@ func (s *SQLiteStore) BulkLookup(ctx context.Context, hashes [][]byte) ([]*Torre
 		args[i] = h
 	}
 
+	//nolint:gosec // placeholders are parameterized, column list is static
 	query := fmt.Sprintf(`
 	SELECT info_hash, name, size, category, quality, files,
 		imdb_id, tmdb_id, tvdb_id, anilist_id, kitsu_id, media_year,
@@ -327,7 +330,7 @@ func (s *SQLiteStore) BulkLookup(ctx context.Context, hashes [][]byte) ([]*Torre
 	if err != nil {
 		return nil, fmt.Errorf("bulk querying torrents: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var torrents []*Torrent
 	for rows.Next() {
@@ -365,6 +368,8 @@ func (s *SQLiteStore) DeleteTorrent(ctx context.Context, infoHash []byte) error 
 
 	return nil
 }
+
+const sqlOrderByDiscoveredAtDesc = " ORDER BY discovered_at DESC LIMIT ? OFFSET ?"
 
 func (s *SQLiteStore) ListRecent(ctx context.Context, opts SearchOpts) (*SearchResult, error) {
 	limit := opts.Limit
@@ -418,14 +423,14 @@ func (s *SQLiteStore) ListRecent(ctx context.Context, opts SearchOpts) (*SearchR
 		return nil, fmt.Errorf("counting results: %w", err)
 	}
 
-	searchQuery += " ORDER BY discovered_at DESC LIMIT ? OFFSET ?"
+	searchQuery += sqlOrderByDiscoveredAtDesc
 	args = append(args, limit, opts.Offset)
 
 	rows, err := s.reader.QueryContext(ctx, searchQuery, args...)
 	if err != nil {
 		return nil, fmt.Errorf("querying recent torrents: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var torrents []*Torrent
 	for rows.Next() {
@@ -458,14 +463,14 @@ func (s *SQLiteStore) SearchByName(ctx context.Context, query string, opts Searc
 	countQuery := `SELECT COUNT(*) FROM torrents_fts WHERE torrents_fts MATCH ?`
 	args := []interface{}{query + "*"}
 
-	searchQuery := fmt.Sprintf(`
+	searchQuery := `
 	SELECT t.info_hash, t.name, t.size, t.category, t.quality, t.files,
 		t.imdb_id, t.tmdb_id, t.tvdb_id, t.anilist_id, t.kitsu_id, t.media_year,
 		t.match_status, t.match_attempts, t.match_after,
 		t.seeders, t.leechers, t.source, t.discovered_at, t.updated_at
 	FROM torrents t
 	JOIN torrents_fts fts ON t.rowid = fts.rowid
-	WHERE torrents_fts MATCH ?`)
+	WHERE torrents_fts MATCH ?`
 
 	var whereClauses []string
 	if len(opts.Categories) > 0 {
@@ -519,7 +524,7 @@ func (s *SQLiteStore) SearchByName(ctx context.Context, query string, opts Searc
 	if err != nil {
 		return nil, fmt.Errorf("searching torrents: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var torrents []*Torrent
 	for rows.Next() {
@@ -557,6 +562,7 @@ func (s *SQLiteStore) SearchByExternalID(ctx context.Context, id ExternalID) ([]
 		return nil, fmt.Errorf("unknown external ID type: %s", id.Type)
 	}
 
+	//nolint:gosec // column is validated against a fixed allowlist above
 	query := fmt.Sprintf(`
 	SELECT info_hash, name, size, category, quality, files,
 		imdb_id, tmdb_id, tvdb_id, anilist_id, kitsu_id, media_year,
@@ -568,7 +574,7 @@ func (s *SQLiteStore) SearchByExternalID(ctx context.Context, id ExternalID) ([]
 	if err != nil {
 		return nil, fmt.Errorf("searching by external ID: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var torrents []*Torrent
 	for rows.Next() {
@@ -607,7 +613,7 @@ func (s *SQLiteStore) FetchUnmatched(ctx context.Context, limit int) ([]*Torrent
 	if err != nil {
 		return nil, fmt.Errorf("fetching unmatched: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var torrents []*Torrent
 	for rows.Next() {
@@ -791,7 +797,7 @@ func (s *SQLiteStore) QuickCheck(ctx context.Context) error {
 
 func (s *SQLiteStore) Backup(ctx context.Context, destPath string) error {
 	destDir := filepath.Dir(destPath)
-	if err := os.MkdirAll(destDir, 0755); err != nil {
+	if err := os.MkdirAll(destDir, 0750); err != nil { //nolint:gosec // 0750 is intentional
 		return fmt.Errorf("creating backup directory: %w", err)
 	}
 
@@ -801,7 +807,6 @@ func (s *SQLiteStore) Backup(ctx context.Context, destPath string) error {
 	}
 	return nil
 }
-
 
 // fetchPage is used by the migration tool to stream rows via keyset pagination.
 func (s *SQLiteStore) fetchPage(ctx context.Context, afterDiscoveredAt int64, afterInfoHash []byte, limit int) ([]*Torrent, error) {
@@ -819,7 +824,7 @@ func (s *SQLiteStore) fetchPage(ctx context.Context, afterDiscoveredAt int64, af
 	if err != nil {
 		return nil, fmt.Errorf("fetching page: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var torrents []*Torrent
 	for rows.Next() {
@@ -843,7 +848,9 @@ func (s *SQLiteStore) incrementInsertCount() {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()
-			s.Analyze(ctx)
+			if err := s.Analyze(ctx); err != nil {
+				_ = err // best-effort background analyze
+			}
 		}()
 	}
 }
@@ -868,7 +875,7 @@ func (s *SQLiteStore) maintenanceLoop() {
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			if err := s.Checkpoint(ctx); err != nil {
-				ctx.Done()
+				_ = err // best-effort background checkpoint
 			}
 			cancel()
 
@@ -878,10 +885,9 @@ func (s *SQLiteStore) maintenanceLoop() {
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			if err := s.QuickCheck(ctx); err != nil {
-				ctx.Done()
+				_ = err // best-effort background integrity check
 			}
 			cancel()
 		}
 	}
 }
-

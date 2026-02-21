@@ -71,11 +71,15 @@ func newTorrent(t *testing.T, hexHash, name string, category store.Category, qua
 func TestTorznabCaps(t *testing.T) {
 	_, srv := newTestServer(t)
 
-	resp, err := http.Get(srv.URL + "/api/torznab?t=caps")
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL+"/api/torznab?t=caps", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("get caps: %v", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
@@ -108,11 +112,15 @@ func TestTorznabSearch(t *testing.T) {
 	}
 
 	url := srv.URL + "/api/torznab?t=search&q=Matrix&cat=2000,2040&limit=10"
-	resp, err := http.Get(url)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil) //nolint:gosec
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("get search: %v", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
@@ -143,11 +151,15 @@ func TestHashLookupSingle(t *testing.T) {
 		t.Fatalf("upsert torrent: %v", err)
 	}
 
-	resp, err := http.Get(srv.URL + "/api/torrents/" + torrent.InfoHashHex())
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL+"/api/torrents/"+torrent.InfoHashHex(), nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("get hash: %v", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
@@ -188,11 +200,16 @@ func TestHashLookupBulk(t *testing.T) {
 		t.Fatalf("marshal payload: %v", err)
 	}
 
-	resp, err := http.Post(srv.URL+"/api/torrents/lookup", "application/json", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, srv.URL+"/api/torrents/lookup", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("post lookup: %v", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)

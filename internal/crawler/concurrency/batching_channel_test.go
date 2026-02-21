@@ -8,6 +8,8 @@ import (
 // drainOut reads all batches from Out() until the channel is closed and returns
 // them. Call this after closing In() to wait for the batching goroutine to exit.
 func drainOut[T any](ch BatchingChannel[T]) [][]T {
+	// Channel length is unknown at call time; prealloc is not possible here.
+	//nolint:prealloc
 	var result [][]T
 	for batch := range ch.Out() {
 		result = append(result, batch)
@@ -42,6 +44,8 @@ func waitForItems[T any](ch BatchingChannel[T], n int, deadline time.Duration) [
 	}
 	return received
 }
+
+const testItem = "hello"
 
 // NOTE on design: the batchingChannel goroutine returns (without flushing) when
 // In() is closed. Items that have not yet been pushed into a full batch will be
@@ -236,10 +240,10 @@ func TestBatchingChannel_TimeBasedFlush(t *testing.T) {
 		)
 
 		ch := NewBatchingChannel[string](capacity, maxBatchSize, maxWait)
-		ch.In() <- "hello"
+		ch.In() <- testItem
 
 		received := waitForItems(ch, 1, 500*time.Millisecond)
-		if len(received) != 1 || received[0] != "hello" {
+		if len(received) != 1 || received[0] != testItem {
 			t.Fatalf("expected [\"hello\"], got %v", received)
 		}
 

@@ -2,7 +2,7 @@ package responder
 
 import (
 	"context"
-	"crypto/md5"
+	"crypto/md5" //nolint:gosec // DHT protocol requires MD5 for announce tokens
 	"encoding/hex"
 	"net/netip"
 
@@ -131,7 +131,7 @@ func (r responder) announceToken(infoHash protocol.ID, nodeID protocol.ID, nodeA
 	bytes = append(bytes, infoHash[:]...)
 	bytes = append(bytes, nodeID[:]...)
 	bytes = append(bytes, []byte(nodeAddr.String())...)
-	tokenHash := md5.Sum(bytes)
+	tokenHash := md5.Sum(bytes) //nolint:gosec // DHT protocol requires MD5 for announce tokens
 
 	return hex.EncodeToString(tokenHash[:])
 }

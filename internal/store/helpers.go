@@ -27,9 +27,9 @@ func encodeFiles(files []File) ([]byte, error) {
 		Path string `json:"path"`
 		Size int64  `json:"size"`
 	}
-	var fjs []fileJSON
+	fjs := make([]fileJSON, 0, len(files)) // prealloc
 	for _, f := range files {
-		fjs = append(fjs, fileJSON{Path: f.Path, Size: f.Size})
+		fjs = append(fjs, fileJSON(f)) // S1016: direct type conversion
 	}
 	return json.Marshal(fjs)
 }
@@ -43,9 +43,9 @@ func decodeFiles(data []byte) ([]File, error) {
 	if err := json.Unmarshal(data, &fjs); err != nil {
 		return nil, err
 	}
-	var files []File
+	files := make([]File, 0, len(fjs)) // prealloc
 	for _, fj := range fjs {
-		files = append(files, File{Path: fj.Path, Size: fj.Size})
+		files = append(files, File(fj)) // S1016: direct type conversion
 	}
 	return files, nil
 }

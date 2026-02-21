@@ -23,7 +23,7 @@ import (
 func New(cfg Config, st store.Store, m *metrics.Metrics, logger *slog.Logger) (*Crawler, error) {
 	nodeID := protocol.RandomNodeIDWithClientSuffix()
 	kTable := ktable.NewTable(nodeID)
-	scalingFactor := int(cfg.ScalingFactor)
+	scalingFactor := int(cfg.ScalingFactor) //nolint:gosec // value is within range
 
 	// Create discovered nodes channel (shared between crawler and responder)
 	discoveredNodes := concurrency.NewBatchingChannel[ktable.Node](

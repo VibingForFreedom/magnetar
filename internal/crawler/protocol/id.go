@@ -91,7 +91,7 @@ func (id ID) IsZero() bool {
 }
 
 func (id ID) GetBit(i int) bool {
-	return id[i/8]>>(7-uint(i%8))&1 == 1
+	return id[i/8]>>(7-uint(i%8))&1 == 1 //nolint:gosec // value is within range
 }
 
 func (id ID) Bytes() []byte {
@@ -159,9 +159,9 @@ type MutableID ID
 
 func (id *MutableID) SetBit(i int, v bool) {
 	if v {
-		id[i/8] |= 1 << (7 - uint(i%8))
+		id[i/8] |= 1 << (7 - uint(i%8)) //nolint:gosec // value is within range
 	} else {
-		id[i/8] &= ^(1 << (7 - uint(i%8)))
+		id[i/8] &= ^(1 << (7 - uint(i%8))) //nolint:gosec // value is within range
 	}
 }
 

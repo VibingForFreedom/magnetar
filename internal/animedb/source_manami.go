@@ -41,7 +41,7 @@ func downloadManami(ctx context.Context) ([]AnimeEntry, [][]string, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("downloading manami database: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, nil, fmt.Errorf("manami download returned status %d", resp.StatusCode)

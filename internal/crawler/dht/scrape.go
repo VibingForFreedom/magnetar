@@ -1,7 +1,7 @@
 package dht
 
 import (
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // DHT protocol requires SHA1
 	"encoding/binary"
 	"math"
 	"math/bits"
@@ -19,7 +19,7 @@ type ScrapeBloomFilter [256]byte
 
 // AddIP adds an IP address to the scrape bloom filter per BEP 33.
 func (me *ScrapeBloomFilter) AddIP(ip net.IP) {
-	h := sha1.New()
+	h := sha1.New() //nolint:gosec // DHT protocol requires SHA1
 	_, _ = h.Write(ip)
 	var sum [20]byte
 	h.Sum(sum[:0])

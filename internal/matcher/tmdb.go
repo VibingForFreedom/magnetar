@@ -200,7 +200,7 @@ func (c *TMDBClient) doGet(ctx context.Context, path string, params url.Values, 
 	if err != nil {
 		return fmt.Errorf("executing request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil

@@ -35,13 +35,13 @@ func RunMigration(ctx context.Context, mcfg MigrationConfig) error {
 	if err != nil {
 		return fmt.Errorf("opening source store: %w", err)
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 
 	dst, err := openStoreForMigration(ctx, mcfg.ToBackend, mcfg.ToDSN)
 	if err != nil {
 		return fmt.Errorf("opening destination store: %w", err)
 	}
-	defer dst.Close()
+	defer func() { _ = dst.Close() }()
 
 	srcStats, err := src.Stats(ctx)
 	if err != nil {

@@ -29,7 +29,7 @@ func TestRunMigration_SQLiteToSQLite(t *testing.T) {
 			t.Fatalf("UpsertTorrent failed: %v", err)
 		}
 	}
-	src.Close()
+	_ = src.Close()
 
 	err := RunMigration(ctx, MigrationConfig{
 		FromBackend: "sqlite",
@@ -44,7 +44,7 @@ func TestRunMigration_SQLiteToSQLite(t *testing.T) {
 
 	// Verify destination
 	dst := newTestStoreAt(t, dstPath)
-	defer dst.Close()
+	defer func() { _ = dst.Close() }()
 
 	stats, err := dst.Stats(ctx)
 	if err != nil {
@@ -65,7 +65,7 @@ func TestRunMigration_EmptySource(t *testing.T) {
 
 	// Create empty source
 	src := newTestStoreAt(t, srcPath)
-	src.Close()
+	_ = src.Close()
 
 	err := RunMigration(ctx, MigrationConfig{
 		FromBackend: "sqlite",
@@ -96,7 +96,7 @@ func TestRunMigration_Idempotent(t *testing.T) {
 			t.Fatalf("UpsertTorrent failed: %v", err)
 		}
 	}
-	src.Close()
+	_ = src.Close()
 
 	mcfg := MigrationConfig{
 		FromBackend: "sqlite",
@@ -115,7 +115,7 @@ func TestRunMigration_Idempotent(t *testing.T) {
 	}
 
 	dst := newTestStoreAt(t, dstPath)
-	defer dst.Close()
+	defer func() { _ = dst.Close() }()
 
 	stats, err := dst.Stats(ctx)
 	if err != nil {

@@ -9,9 +9,9 @@ import (
 
 func TestRandomNodeID(t *testing.T) {
 	t.Run("returns 20 bytes", func(t *testing.T) {
-		id := RandomNodeID()
-		if len(id) != 20 {
-			t.Fatalf("expected 20 bytes, got %d", len(id))
+		const wantLen = 20
+		if got := len(RandomNodeID()); got != wantLen {
+			t.Fatalf("expected %d bytes, got %d", wantLen, got)
 		}
 	})
 
@@ -46,9 +46,9 @@ func TestRandomNodeIDWithClientSuffix(t *testing.T) {
 	const clientPart = idClientPart
 
 	t.Run("length is 20 bytes", func(t *testing.T) {
-		id := RandomNodeIDWithClientSuffix()
-		if len(id) != 20 {
-			t.Fatalf("expected 20 bytes, got %d", len(id))
+		const wantLen = 20
+		if got := len(RandomNodeIDWithClientSuffix()); got != wantLen {
+			t.Fatalf("expected %d bytes, got %d", wantLen, got)
 		}
 	})
 

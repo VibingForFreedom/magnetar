@@ -65,7 +65,7 @@ func (c *AniListClient) SearchAnime(ctx context.Context, title string) (anilistI
 	if err != nil {
 		return 0, fmt.Errorf("executing request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("anilist returned status %d", resp.StatusCode)

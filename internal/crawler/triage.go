@@ -53,7 +53,8 @@ func (c *Crawler) runInfoHashTriage(ctx context.Context) {
 
 			for hash, req := range reqMap {
 				info, found := existingMap[hash]
-				if !found {
+				switch {
+				case !found:
 					// New hash — fetch metadata
 					select {
 					case <-ctx.Done():
@@ -61,7 +62,7 @@ func (c *Crawler) runInfoHashTriage(ctx context.Context) {
 					case c.getPeers.In() <- req:
 						continue
 					}
-				} else if !info.hasFiles {
+				case !info.hasFiles:
 					// Exists but missing file info — re-fetch
 					select {
 					case <-ctx.Done():
@@ -69,8 +70,8 @@ func (c *Crawler) runInfoHashTriage(ctx context.Context) {
 					case c.getPeers.In() <- req:
 						continue
 					}
-				} else if info.seeders == 0 && info.leechers == 0 ||
-					time.Unix(info.updatedAt, 0).Before(time.Now().Add(-c.rescrapeThreshold)) {
+				case info.seeders == 0 && info.leechers == 0 ||
+					time.Unix(info.updatedAt, 0).Before(time.Now().Add(-c.rescrapeThreshold)):
 					// Stale S/L counts — rescrape
 					select {
 					case <-ctx.Done():

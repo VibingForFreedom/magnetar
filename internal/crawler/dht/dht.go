@@ -33,7 +33,7 @@ func (m RecvMsg) AnnouncePort() uint16 {
 	if args != nil && !args.ImpliedPort {
 		argsPort := args.Port
 		if argsPort != nil {
-			port = uint16(*argsPort)
+			port = uint16(*argsPort) //nolint:gosec // value is within range
 		}
 	}
 	return port

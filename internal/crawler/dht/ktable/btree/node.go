@@ -96,25 +96,8 @@ func (n *rootNode) Drop(id NodeID) bool {
 	return ok
 }
 
-func (n *rootNode) furthest(thresholdXor NodeID) (NodeID, bool) {
-	xor, ok := n.node.furthestXor()
-	if ok {
-		if xor.Bits().Cmp(thresholdXor.Bits()) <= 0 {
-			return nil, false
-		}
-
-		return xor.MustXor(n.origin), true
-	}
-
-	return nil, false
-}
-
 func (n *rootNode) Count() int {
 	return n.node.count()
-}
-
-func (n *rootNode) countCloserThan(id NodeID) int {
-	return n.node.countCloserThanSubpath(id.Bits())
 }
 
 func (n *rootNode) Closest(id NodeID, count int) []NodeID {

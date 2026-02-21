@@ -107,7 +107,7 @@
 				onchange={onCategoryChange}
 				class="rounded-md border border-border bg-bg-tertiary px-3 py-2 text-sm text-text-primary focus:border-accent-blue focus:outline-none"
 			>
-				{#each categories as cat}
+				{#each categories as cat (cat.label)}
 					<option value={cat.value ?? ''}>{cat.label}</option>
 				{/each}
 			</select>
@@ -116,7 +116,7 @@
 				onchange={onQualityChange}
 				class="rounded-md border border-border bg-bg-tertiary px-3 py-2 text-sm text-text-primary focus:border-accent-blue focus:outline-none"
 			>
-				{#each qualities as q}
+				{#each qualities as q (q.label)}
 					<option value={q.value ?? ''}>{q.label}</option>
 				{/each}
 			</select>

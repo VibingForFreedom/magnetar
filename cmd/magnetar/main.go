@@ -84,7 +84,7 @@ func printVersion() {
 	fmt.Printf("Magnetar v%s (built %s)\n", Version, BuildDate)
 }
 
-func runServe(fs *flag.FlagSet) error {
+func runServe(_ *flag.FlagSet) error { //nolint:unparam
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
@@ -109,17 +109,18 @@ func runServe(fs *flag.FlagSet) error {
 	)
 
 	var st store.Store
-	if cfg.IsSQLite() {
+	switch {
+	case cfg.IsSQLite():
 		st, err = store.NewSQLiteStore(ctx, cfg)
 		if err != nil {
 			return fmt.Errorf("initializing sqlite store: %w", err)
 		}
-	} else if cfg.IsMariaDB() {
+	case cfg.IsMariaDB():
 		st, err = store.NewMariaDBStore(ctx, cfg)
 		if err != nil {
 			return fmt.Errorf("initializing mariadb store: %w", err)
 		}
-	} else {
+	default:
 		return fmt.Errorf("unsupported database backend: %s", cfg.DBBackend)
 	}
 	defer func() {
@@ -166,8 +167,8 @@ func runServe(fs *flag.FlagSet) error {
 	var dhtCrawler *crawler.Crawler
 	if cfg.CrawlEnabled {
 		crawlCfg := crawler.NewDefaultConfig()
-		crawlCfg.Port = uint16(cfg.CrawlPort)
-		crawlCfg.ScalingFactor = uint(cfg.CrawlWorkers)
+		crawlCfg.Port = uint16(cfg.CrawlPort)         //nolint:gosec // validated in config
+		crawlCfg.ScalingFactor = uint(cfg.CrawlWorkers) //nolint:gosec // validated in config
 
 		var crawlErr error
 		dhtCrawler, crawlErr = crawler.New(crawlCfg, st, m, logger)
@@ -314,7 +315,7 @@ func runBackup(args []string) error {
 	if err != nil {
 		return fmt.Errorf("initializing store: %w", err)
 	}
-	defer st.Close()
+	defer func() { _ = st.Close() }()
 
 	logger.Info("creating backup", "output", *output)
 

@@ -3,15 +3,18 @@ package store
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 )
 
+const testIMDBID = "tt1234567"
+
 func makeInfoHash() []byte {
 	b := make([]byte, 20)
-	rand.Read(b)
+	_, _ = rand.Read(b)
 	return b
 }
 
@@ -51,7 +54,7 @@ func testCRUD(t *testing.T, st Store) {
 
 	infoHash := makeInfoHash()
 	original := makeTestTorrent(infoHash, "Test Movie 2024 1080p BluRay")
-	original.IMDBID = "tt1234567"
+	original.IMDBID = testIMDBID
 	original.TMDBID = 12345
 	original.MediaYear = 2024
 
@@ -135,11 +138,11 @@ func testCRUD(t *testing.T, st Store) {
 	}
 
 	_, err = st.GetTorrent(ctx, infoHash)
-	if err != ErrNotFound {
+	if !errors.Is(err, ErrNotFound) {
 		t.Errorf("expected ErrNotFound after delete, got: %v", err)
 	}
 
-	if err := st.DeleteTorrent(ctx, infoHash); err != ErrNotFound {
+	if err := st.DeleteTorrent(ctx, infoHash); !errors.Is(err, ErrNotFound) {
 		t.Errorf("expected ErrNotFound when deleting non-existent torrent, got: %v", err)
 	}
 }
@@ -336,7 +339,7 @@ func testExternalID(t *testing.T, st Store) {
 
 	imdbHash := makeInfoHash()
 	imdbTorrent := makeTestTorrent(imdbHash, "IMDB Test Movie 2024")
-	imdbTorrent.IMDBID = "tt1234567"
+	imdbTorrent.IMDBID = testIMDBID
 	if err := st.UpsertTorrent(ctx, imdbTorrent); err != nil {
 		t.Fatalf("UpsertTorrent failed: %v", err)
 	}
@@ -356,7 +359,7 @@ func testExternalID(t *testing.T, st Store) {
 		t.Fatalf("UpsertTorrent failed: %v", err)
 	}
 
-	results, err := st.SearchByExternalID(ctx, ExternalID{Type: "imdb", Value: "tt1234567"})
+	results, err := st.SearchByExternalID(ctx, ExternalID{Type: "imdb", Value: testIMDBID})
 	if err != nil {
 		t.Fatalf("SearchByExternalID (IMDB) failed: %v", err)
 	}
@@ -368,7 +371,7 @@ func testExternalID(t *testing.T, st Store) {
 		if string(results[0].InfoHash) != string(imdbHash) {
 			t.Errorf("IMDB result InfoHash mismatch")
 		}
-		if results[0].IMDBID != "tt1234567" {
+		if results[0].IMDBID != testIMDBID {
 			t.Errorf("IMDB result IMDBID mismatch: got %q", results[0].IMDBID)
 		}
 	}

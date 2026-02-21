@@ -126,7 +126,7 @@ func (c *TVDBClient) login(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("executing login request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("tvdb login failed with status %d", resp.StatusCode)
@@ -173,7 +173,7 @@ func (c *TVDBClient) doGet(ctx context.Context, path string, params url.Values, 
 	if err != nil {
 		return fmt.Errorf("executing request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil

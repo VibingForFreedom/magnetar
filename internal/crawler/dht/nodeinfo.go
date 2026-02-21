@@ -25,10 +25,10 @@ func (ni NodeInfo) String() string {
 
 func RandomNodeInfo(ipLen int) (ni NodeInfo) {
 	ni.ID = protocol.RandomNodeID()
-	ni.Addr.Port = rand.Intn(math.MaxUint16 + 1)
+	ni.Addr.Port = rand.Intn(math.MaxUint16 + 1) //nolint:gosec // not used for security
 	ni.Addr.IP = make(net.IP, ipLen)
 	for i := range ipLen {
-		ni.Addr.IP[i] = byte(rand.Intn(256))
+		ni.Addr.IP[i] = byte(rand.Intn(256)) //nolint:gosec // not used for security
 	}
 	return
 }
@@ -42,7 +42,7 @@ func (ni NodeInfo) MarshalBinary() ([]byte, error) {
 	var w bytes.Buffer
 	_, _ = w.Write(ni.ID[:])
 	_, _ = w.Write(ni.Addr.IP)
-	if err := binary.Write(&w, binary.BigEndian, uint16(ni.Addr.Port)); err != nil {
+	if err := binary.Write(&w, binary.BigEndian, uint16(ni.Addr.Port)); err != nil { //nolint:gosec // value is within range
 		return nil, err
 	}
 	return w.Bytes(), nil

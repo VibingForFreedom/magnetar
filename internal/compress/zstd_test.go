@@ -60,9 +60,9 @@ func TestEmptyInput(t *testing.T) {
 }
 
 func TestLargeInput(t *testing.T) {
-	rand.New(rand.NewSource(42))
+	rng := rand.New(rand.NewSource(42)) //nolint:gosec
 	data := make([]byte, 1024*1024)
-	rand.Read(data)
+	_, _ = rng.Read(data)
 
 	compressed, err := Compress(data)
 	if err != nil {

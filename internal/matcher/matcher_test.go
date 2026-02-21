@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -42,17 +43,17 @@ func TestBackoffDuration(t *testing.T) {
 
 func TestTMDBClient_SearchMovie(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/3/search/movie":
+		switch r.URL.Path {
+		case "/3/search/movie":
 			query := r.URL.Query().Get("query")
 			if query == "Inception" {
-				json.NewEncoder(w).Encode(map[string]interface{}{
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{
 					"results": []map[string]interface{}{
 						{"id": 27205, "release_date": "2010-07-16"},
 					},
 				})
 			} else {
-				json.NewEncoder(w).Encode(map[string]interface{}{"results": []interface{}{}})
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"results": []interface{}{}})
 			}
 		default:
 			http.NotFound(w, r)
@@ -69,12 +70,12 @@ func TestTMDBClient_SearchMovie(t *testing.T) {
 	// We need to patch the base URL. Let's use a different approach.
 	t.Run("search found", func(t *testing.T) {
 		// Direct HTTP test
-		req, _ := http.NewRequest("GET", ts.URL+"/3/search/movie?query=Inception&api_key=test", nil)
+		req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, ts.URL+"/3/search/movie?query=Inception&api_key=test", nil)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer resp.Body.Close()
+		defer resp.Body.Close() //nolint:errcheck
 
 		var result struct {
 			Results []struct {
@@ -82,7 +83,9 @@ func TestTMDBClient_SearchMovie(t *testing.T) {
 				ReleaseDate string `json:"release_date"`
 			} `json:"results"`
 		}
-		json.NewDecoder(resp.Body).Decode(&result)
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			t.Fatal(err)
+		}
 
 		if len(result.Results) != 1 {
 			t.Fatalf("expected 1 result, got %d", len(result.Results))
@@ -93,17 +96,19 @@ func TestTMDBClient_SearchMovie(t *testing.T) {
 	})
 
 	t.Run("search not found", func(t *testing.T) {
-		req, _ := http.NewRequest("GET", ts.URL+"/3/search/movie?query=NonExistent&api_key=test", nil)
+		req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, ts.URL+"/3/search/movie?query=NonExistent&api_key=test", nil)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer resp.Body.Close()
+		defer resp.Body.Close() //nolint:errcheck
 
 		var result struct {
 			Results []interface{} `json:"results"`
 		}
-		json.NewDecoder(resp.Body).Decode(&result)
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			t.Fatal(err)
+		}
 
 		if len(result.Results) != 0 {
 			t.Errorf("expected 0 results, got %d", len(result.Results))
@@ -113,31 +118,32 @@ func TestTMDBClient_SearchMovie(t *testing.T) {
 
 func TestTMDBClient_FindByIMDB(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/3/find/tt1375666" {
-			json.NewEncoder(w).Encode(map[string]interface{}{
+		switch r.URL.Path {
+		case "/3/find/tt1375666":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"movie_results": []map[string]interface{}{
 					{"id": 27205, "title": "Inception", "release_date": "2010-07-16"},
 				},
 				"tv_results": []interface{}{},
 			})
-		} else if r.URL.Path == "/3/find/tt0000000" {
-			json.NewEncoder(w).Encode(map[string]interface{}{
+		case "/3/find/tt0000000":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"movie_results": []interface{}{},
 				"tv_results":    []interface{}{},
 			})
-		} else {
+		default:
 			http.NotFound(w, r)
 		}
 	}))
 	defer ts.Close()
 
 	t.Run("found movie", func(t *testing.T) {
-		req, _ := http.NewRequest("GET", ts.URL+"/3/find/tt1375666?external_source=imdb_id&api_key=test", nil)
+		req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, ts.URL+"/3/find/tt1375666?external_source=imdb_id&api_key=test", nil)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer resp.Body.Close()
+		defer resp.Body.Close() //nolint:errcheck
 
 		var result struct {
 			MovieResults []struct {
@@ -145,7 +151,9 @@ func TestTMDBClient_FindByIMDB(t *testing.T) {
 				Title string `json:"title"`
 			} `json:"movie_results"`
 		}
-		json.NewDecoder(resp.Body).Decode(&result)
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			t.Fatal(err)
+		}
 
 		if len(result.MovieResults) != 1 {
 			t.Fatalf("expected 1 movie result, got %d", len(result.MovieResults))
@@ -156,18 +164,20 @@ func TestTMDBClient_FindByIMDB(t *testing.T) {
 	})
 
 	t.Run("not found", func(t *testing.T) {
-		req, _ := http.NewRequest("GET", ts.URL+"/3/find/tt0000000?external_source=imdb_id&api_key=test", nil)
+		req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, ts.URL+"/3/find/tt0000000?external_source=imdb_id&api_key=test", nil)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer resp.Body.Close()
+		defer resp.Body.Close() //nolint:errcheck
 
 		var result struct {
 			MovieResults []interface{} `json:"movie_results"`
 			TVResults    []interface{} `json:"tv_results"`
 		}
-		json.NewDecoder(resp.Body).Decode(&result)
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			t.Fatal(err)
+		}
 
 		if len(result.MovieResults) != 0 || len(result.TVResults) != 0 {
 			t.Error("expected no results")
@@ -178,7 +188,7 @@ func TestTMDBClient_FindByIMDB(t *testing.T) {
 func TestTMDBClient_GetMovieExternalIDs(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/3/movie/27205/external_ids" {
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"imdb_id": "tt1375666",
 			})
 		} else {
@@ -187,17 +197,19 @@ func TestTMDBClient_GetMovieExternalIDs(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	req, _ := http.NewRequest("GET", ts.URL+"/3/movie/27205/external_ids?api_key=test", nil)
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, ts.URL+"/3/movie/27205/external_ids?api_key=test", nil)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	var result struct {
 		IMDBID string `json:"imdb_id"`
 	}
-	json.NewDecoder(resp.Body).Decode(&result)
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
 
 	if result.IMDBID != "tt1375666" {
 		t.Errorf("expected tt1375666, got %s", result.IMDBID)
@@ -207,7 +219,7 @@ func TestTMDBClient_GetMovieExternalIDs(t *testing.T) {
 func TestTMDBClient_GetTVExternalIDs(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/3/tv/1399/external_ids" {
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"imdb_id": "tt0944947",
 				"tvdb_id": 121361,
 			})
@@ -217,18 +229,20 @@ func TestTMDBClient_GetTVExternalIDs(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	req, _ := http.NewRequest("GET", ts.URL+"/3/tv/1399/external_ids?api_key=test", nil)
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, ts.URL+"/3/tv/1399/external_ids?api_key=test", nil)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	var result struct {
 		IMDBID string `json:"imdb_id"`
 		TVDBID int    `json:"tvdb_id"`
 	}
-	json.NewDecoder(resp.Body).Decode(&result)
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
 
 	if result.IMDBID != "tt0944947" {
 		t.Errorf("expected tt0944947, got %s", result.IMDBID)
@@ -244,12 +258,12 @@ func TestTMDBClient_ServerError(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	req, _ := http.NewRequest("GET", ts.URL+"/3/search/movie?query=test&api_key=test", nil)
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, ts.URL+"/3/search/movie?query=test&api_key=test", nil)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("expected 500, got %d", resp.StatusCode)
@@ -259,7 +273,7 @@ func TestTMDBClient_ServerError(t *testing.T) {
 func TestTVDBClient_Login(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v4/login" && r.Method == "POST" {
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"data": map[string]string{
 					"token": "test-jwt-token",
 				},
@@ -272,17 +286,19 @@ func TestTVDBClient_Login(t *testing.T) {
 
 	// Test login endpoint directly
 	body := `{"apikey":"test-key"}`
-	req, _ := http.NewRequest("POST", ts.URL+"/v4/login", nil)
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, ts.URL+"/v4/login", nil)
 	req.Header.Set("Content-Type", "application/json")
 	req.Body = http.NoBody
+	_ = body
 
 	// Simpler: just hit the endpoint
-	resp, err := http.Post(ts.URL+"/v4/login", "application/json", nil)
+	postReq, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, ts.URL+"/v4/login", nil)
+	postReq.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(postReq)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
-	_ = body
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected 200, got %d", resp.StatusCode)
@@ -293,19 +309,19 @@ func TestTVDBClient_SearchSeries(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/v4/login":
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"data": map[string]string{"token": "test-jwt-token"},
 			})
 		case "/v4/search":
 			query := r.URL.Query().Get("query")
 			if query == "Breaking Bad" {
-				json.NewEncoder(w).Encode(map[string]interface{}{
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{
 					"data": []map[string]interface{}{
 						{"tvdb_id": "81189"},
 					},
 				})
 			} else {
-				json.NewEncoder(w).Encode(map[string]interface{}{"data": []interface{}{}})
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"data": []interface{}{}})
 			}
 		default:
 			http.NotFound(w, r)
@@ -315,20 +331,22 @@ func TestTVDBClient_SearchSeries(t *testing.T) {
 
 	t.Run("found", func(t *testing.T) {
 		// Verify the search endpoint returns correct data
-		req, _ := http.NewRequest("GET", ts.URL+"/v4/search?query=Breaking+Bad&type=series", nil)
+		req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, ts.URL+"/v4/search?query=Breaking+Bad&type=series", nil)
 		req.Header.Set("Authorization", "Bearer test-jwt-token")
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer resp.Body.Close()
+		defer resp.Body.Close() //nolint:errcheck
 
 		var result struct {
 			Data []struct {
 				TVDBID string `json:"tvdb_id"`
 			} `json:"data"`
 		}
-		json.NewDecoder(resp.Body).Decode(&result)
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			t.Fatal(err)
+		}
 
 		if len(result.Data) != 1 {
 			t.Fatalf("expected 1 result, got %d", len(result.Data))
@@ -346,10 +364,12 @@ func TestAniListClient_SearchAnime(t *testing.T) {
 				Search string `json:"search"`
 			} `json:"variables"`
 		}
-		json.NewDecoder(r.Body).Decode(&body)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
 
 		if body.Variables.Search == "Attack on Titan" {
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"data": map[string]interface{}{
 					"Media": map[string]interface{}{
 						"id":    16498,
@@ -362,7 +382,7 @@ func TestAniListClient_SearchAnime(t *testing.T) {
 				},
 			})
 		} else {
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"data": map[string]interface{}{
 					"Media": nil,
 				},
@@ -373,12 +393,13 @@ func TestAniListClient_SearchAnime(t *testing.T) {
 
 	t.Run("found", func(t *testing.T) {
 		body := `{"query":"","variables":{"search":"Attack on Titan"}}`
-		resp, err := http.Post(ts.URL, "application/json", nil)
+		req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, ts.URL, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer resp.Body.Close()
-		_ = body
+		defer resp.Body.Close() //nolint:errcheck
 
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("expected 200, got %d", resp.StatusCode)
@@ -386,11 +407,14 @@ func TestAniListClient_SearchAnime(t *testing.T) {
 	})
 
 	t.Run("not found", func(t *testing.T) {
-		resp, err := http.Post(ts.URL, "application/json", nil)
+		body := `{"query":"","variables":{"search":"Unknown Anime"}}`
+		req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, ts.URL, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer resp.Body.Close()
+		defer resp.Body.Close() //nolint:errcheck
 
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("expected 200, got %d", resp.StatusCode)
@@ -402,13 +426,13 @@ func TestKitsuClient_SearchAnime(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		filterText := r.URL.Query().Get("filter[text]")
 		if filterText == "Naruto" {
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"data": []map[string]interface{}{
 					{"id": "11", "type": "anime"},
 				},
 			})
 		} else {
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"data": []interface{}{},
 			})
 		}
@@ -416,20 +440,22 @@ func TestKitsuClient_SearchAnime(t *testing.T) {
 	defer ts.Close()
 
 	t.Run("found", func(t *testing.T) {
-		req, _ := http.NewRequest("GET", ts.URL+"/anime?filter[text]=Naruto&page[limit]=1", nil)
+		req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, ts.URL+"/anime?filter[text]=Naruto&page[limit]=1", nil)
 		req.Header.Set("Accept", "application/vnd.api+json")
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer resp.Body.Close()
+		defer resp.Body.Close() //nolint:errcheck
 
 		var result struct {
 			Data []struct {
 				ID string `json:"id"`
 			} `json:"data"`
 		}
-		json.NewDecoder(resp.Body).Decode(&result)
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			t.Fatal(err)
+		}
 
 		if len(result.Data) != 1 {
 			t.Fatalf("expected 1 result, got %d", len(result.Data))
@@ -440,17 +466,19 @@ func TestKitsuClient_SearchAnime(t *testing.T) {
 	})
 
 	t.Run("not found", func(t *testing.T) {
-		req, _ := http.NewRequest("GET", ts.URL+"/anime?filter[text]=Unknown&page[limit]=1", nil)
+		req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, ts.URL+"/anime?filter[text]=Unknown&page[limit]=1", nil)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer resp.Body.Close()
+		defer resp.Body.Close() //nolint:errcheck
 
 		var result struct {
 			Data []interface{} `json:"data"`
 		}
-		json.NewDecoder(resp.Body).Decode(&result)
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			t.Fatal(err)
+		}
 
 		if len(result.Data) != 0 {
 			t.Errorf("expected 0 results, got %d", len(result.Data))
@@ -461,27 +489,27 @@ func TestKitsuClient_SearchAnime(t *testing.T) {
 func TestMatcherProcessBatch(t *testing.T) {
 	// Setup mock TMDB server
 	tmdbServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/3/search/movie":
+		switch r.URL.Path {
+		case "/3/search/movie":
 			query := r.URL.Query().Get("query")
 			if query == "Inception" {
-				json.NewEncoder(w).Encode(map[string]interface{}{
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{
 					"results": []map[string]interface{}{
 						{"id": 27205, "release_date": "2010-07-16"},
 					},
 				})
 			} else {
-				json.NewEncoder(w).Encode(map[string]interface{}{"results": []interface{}{}})
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"results": []interface{}{}})
 			}
-		case r.URL.Path == "/3/movie/27205/external_ids":
-			json.NewEncoder(w).Encode(map[string]interface{}{
+		case "/3/movie/27205/external_ids":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"imdb_id": "tt1375666",
 			})
 		default:
-			json.NewEncoder(w).Encode(map[string]interface{}{})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{})
 		}
 	}))
-	defer tmdbServer.Close()
+	defer func() { _ = tmdbServer.Close; tmdbServer.Close() }()
 
 	// Create a real SQLite store
 	cfg := &config.Config{
@@ -500,7 +528,7 @@ func TestMatcherProcessBatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("creating store: %v", err)
 	}
-	defer st.Close()
+	defer func() { _ = st.Close() }()
 
 	// Insert an unmatched torrent
 	torrent := &store.Torrent{
@@ -583,7 +611,7 @@ func TestMatcherBackoffIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("creating store: %v", err)
 	}
-	defer st.Close()
+	defer func() { _ = st.Close() }()
 
 	// Insert an unmatched torrent
 	torrent := &store.Torrent{
@@ -639,15 +667,15 @@ func TestMatcherBackoffIntegration(t *testing.T) {
 func TestMatchPipelineRouting(t *testing.T) {
 	// Create a mock server that returns empty results for all requests
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/anime":
+		switch r.URL.Path {
+		case "/anime":
 			// Kitsu JSON:API - empty results
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"data": []interface{}{},
 			})
 		default:
 			// AniList GraphQL - empty results
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"data": map[string]interface{}{"Media": nil},
 			})
 		}

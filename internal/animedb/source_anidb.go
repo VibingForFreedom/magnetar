@@ -28,7 +28,7 @@ func downloadAniDBTitles(ctx context.Context) (map[int][]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("downloading anidb titles: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("anidb download returned status %d", resp.StatusCode)
@@ -38,7 +38,7 @@ func downloadAniDBTitles(ctx context.Context) (map[int][]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("decompressing anidb titles: %w", err)
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 
 	return parseAniDBTitles(gz)
 }

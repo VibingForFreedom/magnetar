@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"sync/atomic"
@@ -40,14 +41,14 @@ func NewMariaDBStore(ctx context.Context, cfg *config.Config) (*MariaDBStore, er
 	db.SetConnMaxLifetime(5 * time.Minute)
 
 	if err := db.PingContext(ctx); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("pinging mariadb: %w", err)
 	}
 
 	s := &MariaDBStore{db: db, cfg: cfg}
 
 	if err := s.Migrate(ctx); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("migration failed: %w", err)
 	}
 
@@ -157,69 +158,70 @@ func (s *MariaDBStore) UpsertTorrents(ctx context.Context, ts []*Torrent) error 
 		if end > len(ts) {
 			end = len(ts)
 		}
-		batch := ts[i:end]
-
-		tx, err := s.db.BeginTx(ctx, nil)
-		if err != nil {
-			return fmt.Errorf("beginning transaction: %w", err)
+		if err := s.upsertBatch(ctx, ts[i:end]); err != nil {
+			return err
 		}
-
-		stmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO torrents (
-			info_hash, name, size, category, quality, files,
-			imdb_id, tmdb_id, tvdb_id, anilist_id, kitsu_id, media_year,
-			match_status, match_attempts, match_after,
-			seeders, leechers, source, discovered_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON DUPLICATE KEY UPDATE
-			name=VALUES(name), size=VALUES(size), category=VALUES(category),
-			quality=VALUES(quality), files=VALUES(files),
-			imdb_id=VALUES(imdb_id), tmdb_id=VALUES(tmdb_id), tvdb_id=VALUES(tvdb_id),
-			anilist_id=VALUES(anilist_id), kitsu_id=VALUES(kitsu_id), media_year=VALUES(media_year),
-			match_status=VALUES(match_status), match_attempts=VALUES(match_attempts),
-			match_after=VALUES(match_after),
-			seeders=VALUES(seeders), leechers=VALUES(leechers), source=VALUES(source),
-			updated_at=VALUES(updated_at)`)
-		if err != nil {
-			tx.Rollback()
-			return fmt.Errorf("preparing statement: %w", err)
-		}
-
-		for _, t := range batch {
-			if t == nil || len(t.InfoHash) != 20 {
-				stmt.Close()
-				tx.Rollback()
-				return ErrInvalidHash
-			}
-
-			filesBlob, err := compressFiles(t.Files)
-			if err != nil {
-				stmt.Close()
-				tx.Rollback()
-				return fmt.Errorf("compressing files: %w", err)
-			}
-
-			_, err = stmt.ExecContext(ctx,
-				t.InfoHash, t.Name, t.Size, t.Category, t.Quality, filesBlob,
-				nullString(t.IMDBID), nullInt(t.TMDBID), nullInt(t.TVDBID), nullInt(t.AniListID), nullInt(t.KitsuID), nullInt(t.MediaYear),
-				t.MatchStatus, t.MatchAttempts, t.MatchAfter,
-				t.Seeders, t.Leechers, t.Source, t.DiscoveredAt, t.UpdatedAt,
-			)
-			if err != nil {
-				stmt.Close()
-				tx.Rollback()
-				return fmt.Errorf("upserting torrent: %w", err)
-			}
-		}
-
-		stmt.Close()
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("committing transaction: %w", err)
-		}
-
-		s.insertCount.Add(int64(len(batch)))
+		s.insertCount.Add(int64(end - i))
 	}
 
+	return nil
+}
+
+func (s *MariaDBStore) upsertBatch(ctx context.Context, batch []*Torrent) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("beginning transaction: %w", err)
+	}
+
+	stmt, err := tx.PrepareContext(ctx, `
+	INSERT INTO torrents (
+		info_hash, name, size, category, quality, files,
+		imdb_id, tmdb_id, tvdb_id, anilist_id, kitsu_id, media_year,
+		match_status, match_attempts, match_after,
+		seeders, leechers, source, discovered_at, updated_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	ON DUPLICATE KEY UPDATE
+		name=VALUES(name), size=VALUES(size), category=VALUES(category),
+		quality=VALUES(quality), files=VALUES(files),
+		imdb_id=VALUES(imdb_id), tmdb_id=VALUES(tmdb_id), tvdb_id=VALUES(tvdb_id),
+		anilist_id=VALUES(anilist_id), kitsu_id=VALUES(kitsu_id), media_year=VALUES(media_year),
+		match_status=VALUES(match_status), match_attempts=VALUES(match_attempts),
+		match_after=VALUES(match_after),
+		seeders=VALUES(seeders), leechers=VALUES(leechers), source=VALUES(source),
+		updated_at=VALUES(updated_at)`)
+	if err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("preparing statement: %w", err)
+	}
+	defer func() { _ = stmt.Close() }()
+
+	for _, t := range batch {
+		if t == nil || len(t.InfoHash) != 20 {
+			_ = tx.Rollback()
+			return ErrInvalidHash
+		}
+
+		filesBlob, err := compressFiles(t.Files)
+		if err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("compressing files: %w", err)
+		}
+
+		_, err = stmt.ExecContext(ctx,
+			t.InfoHash, t.Name, t.Size, t.Category, t.Quality, filesBlob,
+			nullString(t.IMDBID), nullInt(t.TMDBID), nullInt(t.TVDBID), nullInt(t.AniListID), nullInt(t.KitsuID), nullInt(t.MediaYear),
+			t.MatchStatus, t.MatchAttempts, t.MatchAfter,
+			t.Seeders, t.Leechers, t.Source, t.DiscoveredAt, t.UpdatedAt,
+		)
+		if err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("upserting torrent: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing transaction: %w", err)
+	}
 	return nil
 }
 
@@ -233,7 +235,7 @@ func (s *MariaDBStore) GetTorrent(ctx context.Context, infoHash []byte) (*Torren
 	row := s.db.QueryRowContext(ctx, query, infoHash)
 	t, err := scanRow(row)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("querying torrent: %w", err)
@@ -262,13 +264,14 @@ func (s *MariaDBStore) BulkLookup(ctx context.Context, hashes [][]byte) ([]*Torr
 		args[i] = h
 	}
 
+	//nolint:gosec // placeholders are parameterized, column list is static
 	query := fmt.Sprintf(`SELECT `+torrentSelectColumns+` FROM torrents WHERE info_hash IN (%s)`, placeholders)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("bulk querying torrents: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var torrents []*Torrent
 	for rows.Next() {
@@ -359,14 +362,14 @@ func (s *MariaDBStore) ListRecent(ctx context.Context, opts SearchOpts) (*Search
 		return nil, fmt.Errorf("counting results: %w", err)
 	}
 
-	searchSQL += " ORDER BY discovered_at DESC LIMIT ? OFFSET ?"
+	searchSQL += sqlOrderByDiscoveredAtDesc
 	args = append(args, limit, opts.Offset)
 
 	rows, err := s.db.QueryContext(ctx, searchSQL, args...)
 	if err != nil {
 		return nil, fmt.Errorf("querying recent torrents: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var torrents []*Torrent
 	for rows.Next() {
@@ -447,14 +450,14 @@ func (s *MariaDBStore) SearchByName(ctx context.Context, query string, opts Sear
 		return nil, fmt.Errorf("counting results: %w", err)
 	}
 
-	searchSQL += " ORDER BY discovered_at DESC LIMIT ? OFFSET ?"
+	searchSQL += sqlOrderByDiscoveredAtDesc
 	args = append(args, limit, opts.Offset)
 
 	rows, err := s.db.QueryContext(ctx, searchSQL, args...)
 	if err != nil {
 		return nil, fmt.Errorf("searching torrents: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var torrents []*Torrent
 	for rows.Next() {
@@ -492,13 +495,14 @@ func (s *MariaDBStore) SearchByExternalID(ctx context.Context, id ExternalID) ([
 		return nil, fmt.Errorf("unknown external ID type: %s", id.Type)
 	}
 
+	//nolint:gosec // column is validated against a fixed allowlist above
 	query := fmt.Sprintf(`SELECT `+torrentSelectColumns+` FROM torrents WHERE %s = ?`, column)
 
 	rows, err := s.db.QueryContext(ctx, query, id.Value)
 	if err != nil {
 		return nil, fmt.Errorf("searching by external ID: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var torrents []*Torrent
 	for rows.Next() {
@@ -533,7 +537,7 @@ func (s *MariaDBStore) FetchUnmatched(ctx context.Context, limit int) ([]*Torren
 	if err != nil {
 		return nil, fmt.Errorf("fetching unmatched: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var torrents []*Torrent
 	for rows.Next() {
@@ -685,7 +689,9 @@ func (s *MariaDBStore) incrementInsertCount() {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()
-			s.Analyze(ctx)
+			if err := s.Analyze(ctx); err != nil {
+				_ = err // best-effort background analyze
+			}
 		}()
 	}
 }
@@ -694,16 +700,15 @@ func (s *MariaDBStore) maintenanceLoop() {
 	analyzeTicker := time.NewTicker(1 * time.Hour)
 	defer analyzeTicker.Stop()
 
-	for {
-		select {
-		case <-analyzeTicker.C:
-			if s.closed.Load() {
-				return
-			}
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-			s.Analyze(ctx)
-			cancel()
+	for range analyzeTicker.C { // S1000: use for range instead of for { select {} }
+		if s.closed.Load() {
+			return
 		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		if err := s.Analyze(ctx); err != nil {
+			_ = err // best-effort background analyze
+		}
+		cancel()
 	}
 }
 
@@ -723,7 +728,7 @@ func (s *MariaDBStore) fetchPage(ctx context.Context, afterDiscoveredAt int64, a
 	if err != nil {
 		return nil, fmt.Errorf("fetching page: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var torrents []*Torrent
 	for rows.Next() {

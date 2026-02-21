@@ -157,10 +157,6 @@ func (n *node) IsSampleInfoHashesCandidate() bool {
 		n.lastRespondedAt.Before(threshold)
 }
 
-func (n *node) olderThan(t time.Time) bool {
-	return n.lastRespondedAt.Before(t)
-}
-
 func NodeResponded() NodeOption {
 	return nodeOption{
 		fn: func(n *node) {

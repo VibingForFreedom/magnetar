@@ -232,12 +232,12 @@ func SetupLogging(cfg *Config) {
 	logLevel := strings.ToLower(cfg.LogLevel)
 	switch logLevel {
 	case "debug":
-		os.Setenv("LOG_LEVEL", "debug")
+		_ = os.Setenv("LOG_LEVEL", "debug")
 	case "warn":
-		os.Setenv("LOG_LEVEL", "warn")
+		_ = os.Setenv("LOG_LEVEL", "warn")
 	case "error":
-		os.Setenv("LOG_LEVEL", "error")
+		_ = os.Setenv("LOG_LEVEL", "error")
 	default:
-		os.Setenv("LOG_LEVEL", "info")
+		_ = os.Setenv("LOG_LEVEL", "info")
 	}
 }

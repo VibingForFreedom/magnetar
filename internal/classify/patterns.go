@@ -5,10 +5,6 @@ import (
 	"strings"
 )
 
-type pattern struct {
-	regex *regexp.Regexp
-}
-
 func compile(s string) *regexp.Regexp {
 	return regexp.MustCompile("(?i)" + s)
 }
@@ -124,12 +120,6 @@ var (
 		compile(`(?i)\(\d{4}\).*(?:480p|720p|1080p|2160p|4K|UHD)`),
 		compile(`(?i)(?:480p|720p|1080p|2160p|4K|UHD).*tt\d{7,9}`),
 	}
-
-	crcPattern = compile(`\[([A-Fa-f0-9]{8})\]`)
-
-	trailingCleanPattern = compile(`[\s._-]*(H\.?264|H\.?265|x264|x265|HEVC|AV1|XviD|DivX|MPEG-?2|AAC|AC-?3|DTS|DDP|DD|Atmos|TrueHD|HDR|DV|Dolby|REMUX|Remux|HDTV|WEB|DVD|BluRay|NF|AMZN|HMAX|DSNP|ATVP|iT|MPX)[\s._\w]*$`)
-
-	endReleasePattern = compile(`[\s._-]+(?:H\.?264|H\.?265|x264|x265|HEVC|AV1|XviD|DivX|MPEG-?2|AAC|AC-?3|DTS|DDP5\.?1|DD5\.?1|DD|Atmos|TrueHD|HDR10\+|HDR10|HDR|DV|Dolby|REMUX|Remux|WEB-?DL|WEBRip|HDTV|BluRay|DVDRip|BDRip|BRRip|NF|AMZN|HMAX|DSNP|ATVP)[\s._\w\-]*$`)
 
 	titleCleanPattern = compile(`(?i)[\s._-]+(?:480p|720p|1080p|1080i|2160p|4k|uhd|fhd|sd|bluray|blu-?ray|web-?dl|webdl|webrip|hdtv|dvdrip|bdrip|brrip|brip|bdremux|remux|h\.?264|h\.?265|x264|x265|hevc|av1|xvid|divx|mpeg-?2|aac|ac-?3|dts-?hd|dts-?ma|dts|ddp5\.?1|dd5\.?1|dd|atmos|truehd|hdr10\+|hdr10|hdr|dv|dolby|nf|amzn|hmax|dsnp|atvp|dts[\s._-]?x|dts[\s._-]?hd[\s._-]?ma|dolby[\s._-]?vision|dual[\s._-]?audio)[\s._\w\-\+\~]*$`)
 )

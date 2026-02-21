@@ -17,7 +17,7 @@ type NodeAddr struct {
 
 func (a NodeAddr) ToAddrPort() netip.AddrPort {
 	addr, _ := netip.AddrFromSlice(a.IP)
-	return netip.AddrPortFrom(addr, uint16(a.Port))
+	return netip.AddrPortFrom(addr, uint16(a.Port)) //nolint:gosec // value is within range
 }
 
 func NewNodeAddrFromAddrPort(f netip.AddrPort) NodeAddr {
@@ -50,7 +50,7 @@ func (a *NodeAddr) UnmarshalBencode(b []byte) (err error) {
 func (a NodeAddr) MarshalBinary() ([]byte, error) {
 	var b bytes.Buffer
 	_, _ = b.Write(a.IP)
-	if err := binary.Write(&b, binary.BigEndian, uint16(a.Port)); err != nil {
+	if err := binary.Write(&b, binary.BigEndian, uint16(a.Port)); err != nil { //nolint:gosec // value is within range
 		return nil, err
 	}
 	return b.Bytes(), nil

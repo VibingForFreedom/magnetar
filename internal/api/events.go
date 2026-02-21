@@ -34,7 +34,7 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				continue
 			}
-			fmt.Fprintf(w, "data: %s\n\n", data)
+			_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
 			flusher.Flush()
 		}
 	}

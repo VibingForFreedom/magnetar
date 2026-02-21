@@ -508,7 +508,6 @@ func TestMapCategory_AllValues(t *testing.T) {
 	}
 
 	for input, want := range mapping {
-		input, want := input, want
 		t.Run(input.String(), func(t *testing.T) {
 			t.Parallel()
 			got := mapCategory(input)
@@ -535,7 +534,6 @@ func TestMapQuality_AllValues(t *testing.T) {
 	}
 
 	for input, want := range mapping {
-		input, want := input, want
 		t.Run(input.String(), func(t *testing.T) {
 			t.Parallel()
 			got := mapQuality(input)

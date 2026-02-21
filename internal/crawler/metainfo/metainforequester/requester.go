@@ -235,7 +235,7 @@ func exHandshake(rw io.ReadWriter) (metadataSize uint, utMetadata uint8, err err
 		return
 	}
 
-	return uint(rRootDict.MetadataSize), uint8(rRootDict.M.UTMetadata), nil
+	return uint(rRootDict.MetadataSize), uint8(rRootDict.M.UTMetadata), nil //nolint:gosec // value is within range
 }
 
 func requestAllPieces(w io.Writer, metadataSize uint, utMetadata uint8) error {
@@ -250,7 +250,7 @@ func requestAllPieces(w io.Writer, metadataSize uint, utMetadata uint8) error {
 		}
 		if _, writeErr := fmt.Fprintf(w,
 			"%s\x14%s%s",
-			uintToBigEndian4(uint(2+len(extDictDump))),
+			uintToBigEndian4(uint(2+len(extDictDump))), //nolint:gosec // value is within range
 			[]byte{utMetadata},
 			extDictDump); writeErr != nil {
 			return writeErr
@@ -261,7 +261,7 @@ func requestAllPieces(w io.Writer, metadataSize uint, utMetadata uint8) error {
 
 func uintToBigEndian4(i uint) []byte {
 	b := make([]byte, 4)
-	binary.BigEndian.PutUint32(b, uint32(i))
+	binary.BigEndian.PutUint32(b, uint32(i)) //nolint:gosec // value is within range
 	return b
 }
 

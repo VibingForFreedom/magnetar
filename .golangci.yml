@@ -1,0 +1,66 @@
+version: "2"
+
+run:
+  build-tags:
+    - sqlite_fts5
+
+linters:
+  enable:
+    # Bugs & correctness
+    - govet          # Go vet checks (shadow, printf, etc.)
+    - staticcheck    # Comprehensive static analysis (SA*, S*, ST*, QF*)
+    - errcheck       # Unchecked errors
+    - ineffassign    # Detects useless assignments
+    - bodyclose      # HTTP response body not closed
+    - durationcheck  # Multiplying two durations
+    - nilerr         # Returning nil after checking err != nil
+    - sqlclosecheck  # SQL rows/stmt not closed
+    - makezero       # Slices with make([]T, n) then append (silent bugs)
+    - errorlint      # Proper error wrapping/comparison (errors.Is/As)
+
+    # Code quality
+    - unused         # Unused code
+    - gocritic       # Opinionated but useful style checks
+    - unconvert      # Unnecessary type conversions
+    - unparam        # Unused function parameters
+    - prealloc       # Slice pre-allocation opportunities
+    - misspell       # Spelling mistakes in comments/strings
+    - copyloopvar    # Loop variable copy issues (Go 1.22+)
+    - goconst        # Repeated string literals that should be constants
+
+    # Security
+    - gosec          # Security issues (SQL injection, hardcoded creds, etc.)
+    - noctx          # HTTP requests without context.Context
+
+linters-settings:
+  govet:
+    enable-all: true
+    disable:
+      - fieldalignment  # Too noisy for this project
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - performance
+    disabled-checks:
+      - hugeParam       # Too strict for value receivers on small structs
+      - rangeValCopy    # Often intentional
+  gosec:
+    excludes:
+      - G104  # Unhandled errors (covered by errcheck)
+      - G304  # File path from variable (we need this for DB paths)
+  staticcheck:
+    checks:
+      - all
+      - -SA1029  # Using context.WithValue with string key is fine for simple cases
+  errcheck:
+    exclude-functions:
+      - (io.Closer).Close
+      - (*database/sql.Rows).Close
+      - (net.Conn).Close
+
+issues:
+  exclude-dirs:
+    - third_party
+    - frontend
+  max-issues-per-linter: 0
+  max-same-issues: 0

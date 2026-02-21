@@ -48,7 +48,7 @@ func (c *KitsuClient) SearchAnime(ctx context.Context, title string) (kitsuID in
 	if err != nil {
 		return 0, fmt.Errorf("executing request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("kitsu returned status %d", resp.StatusCode)
@@ -69,6 +69,6 @@ func (c *KitsuClient) SearchAnime(ctx context.Context, title string) (kitsuID in
 	}
 
 	var id int
-	fmt.Sscanf(result.Data[0].ID, "%d", &id)
+	_, _ = fmt.Sscanf(result.Data[0].ID, "%d", &id)
 	return id, nil
 }

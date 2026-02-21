@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { resolve } from '$app/paths';
 	import { LayoutDashboard, Database, Settings, Magnet } from 'lucide-svelte';
 
 	const links = [
-		{ href: '/', label: 'Dashboard', icon: LayoutDashboard },
-		{ href: '/torrents', label: 'Torrents', icon: Database },
-		{ href: '/settings', label: 'Settings', icon: Settings }
+		{ href: '/' as const, label: 'Dashboard', icon: LayoutDashboard },
+		{ href: '/torrents' as const, label: 'Torrents', icon: Database },
+		{ href: '/settings' as const, label: 'Settings', icon: Settings }
 	];
 </script>
 
@@ -16,10 +17,10 @@
 	</div>
 
 	<nav class="flex-1 px-3 py-2">
-		{#each links as link}
+		{#each links as link (link.href)}
 			{@const active = page.url.pathname === link.href}
 			<a
-				href={link.href}
+				href={resolve(link.href)}
 				class="mb-1 flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors {active
 					? 'bg-bg-tertiary text-text-primary'
 					: 'text-text-secondary hover:bg-bg-tertiary/50 hover:text-text-primary'}"

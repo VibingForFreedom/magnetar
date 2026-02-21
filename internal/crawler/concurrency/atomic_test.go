@@ -119,7 +119,6 @@ func TestAtomicValue_ConcurrentAccess(t *testing.T) {
 
 		// Writers.
 		for w := range goroutines {
-			w := w
 			go func() {
 				defer wg.Done()
 				for i := range iterations {
@@ -180,7 +179,6 @@ func TestAtomicValue_ConcurrentAccess(t *testing.T) {
 		wg.Add(goroutines * 2)
 
 		for w := range goroutines {
-			w := w
 			go func() {
 				defer wg.Done()
 				for i := range iterations {

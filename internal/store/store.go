@@ -16,6 +16,8 @@ const (
 	CategoryUnknown Category = 3
 )
 
+const categoryUnknownStr = "unknown"
+
 func (c Category) String() string {
 	switch c {
 	case CategoryMovie:
@@ -25,7 +27,7 @@ func (c Category) String() string {
 	case CategoryAnime:
 		return "anime"
 	default:
-		return "unknown"
+		return categoryUnknownStr
 	}
 }
 
@@ -37,7 +39,7 @@ func ParseCategory(s string) Category {
 		return CategoryTV
 	case "anime":
 		return CategoryAnime
-	case "unknown", "other":
+	case categoryUnknownStr, "other":
 		return CategoryUnknown
 	default:
 		return CategoryUnknown
@@ -78,7 +80,7 @@ func (q Quality) String() string {
 	case QualityUHD:
 		return "uhd"
 	default:
-		return "unknown"
+		return categoryUnknownStr
 	}
 }
 

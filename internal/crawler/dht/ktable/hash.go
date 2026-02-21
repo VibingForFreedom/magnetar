@@ -58,10 +58,6 @@ func (h *hash) public() Hash {
 	return h
 }
 
-func (h *hash) hasPeers() bool {
-	return len(h.peers) > 0
-}
-
 func (h *hash) ID() ID {
 	return h.id
 }

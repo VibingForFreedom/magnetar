@@ -82,9 +82,9 @@ func addrPortToSockaddr(addr netip.AddrPort) (unix.Sockaddr, error) {
 func sockaddrToAddrPort(addr unix.Sockaddr) (netip.AddrPort, error) {
 	switch addr := addr.(type) {
 	case *unix.SockaddrInet4:
-		return netip.AddrPortFrom(netip.AddrFrom4(addr.Addr), uint16(addr.Port)), nil
+		return netip.AddrPortFrom(netip.AddrFrom4(addr.Addr), uint16(addr.Port)), nil //nolint:gosec // value is within range
 	case *unix.SockaddrInet6:
-		return netip.AddrPortFrom(netip.AddrFrom16(addr.Addr), uint16(addr.Port)), nil
+		return netip.AddrPortFrom(netip.AddrFrom16(addr.Addr), uint16(addr.Port)), nil //nolint:gosec // value is within range
 	default:
 		return netip.AddrPort{}, fmt.Errorf("unsupported sockaddr type: %T", addr)
 	}

@@ -29,7 +29,7 @@ func newTestStore(t *testing.T) *SQLiteStore {
 	}
 
 	t.Cleanup(func() {
-		store.Close()
+		_ = store.Close()
 	})
 
 	return store

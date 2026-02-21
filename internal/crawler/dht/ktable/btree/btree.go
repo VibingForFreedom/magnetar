@@ -68,7 +68,7 @@ func ParseBinaryNodeID(str string) (NodeID, error) {
 	id := make(NodeID, len(str)/8)
 	for i := range len(str) {
 		if str[i] == '1' {
-			id[i/8] |= 1 << (7 - uint(i%8))
+			id[i/8] |= 1 << (7 - uint(i%8)) //nolint:gosec // value is within range
 		} else if str[i] != '0' {
 			return nil, errors.New("invalid character")
 		}
@@ -85,7 +85,7 @@ func MustParseBinaryNodeID(str string) NodeID {
 }
 
 func (id NodeID) GetBit(n int) Bit {
-	return id[n/8]>>(7-uint(n%8))&1 == 1
+	return id[n/8]>>(7-uint(n%8))&1 == 1 //nolint:gosec // value is within range
 }
 
 func (id NodeID) Xor(other NodeID) (NodeID, error) {

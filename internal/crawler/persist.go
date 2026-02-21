@@ -67,11 +67,11 @@ func (c *Crawler) buildTorrent(hash protocol.ID, info metainfo.Info, peerCount i
 	name := info.BestName()
 
 	// Build file list for classification
-	var classifyFiles []classify.File
-	var storeFiles []store.File
+	classifyFiles := make([]classify.File, 0, len(info.Files))
+	storeFiles := make([]store.File, 0, len(info.Files))
 
 	for i, file := range info.Files {
-		if i >= int(c.saveFilesThreshold) {
+		if i >= int(c.saveFilesThreshold) { //nolint:gosec // value is within range
 			break
 		}
 		path := file.DisplayPath(&info)

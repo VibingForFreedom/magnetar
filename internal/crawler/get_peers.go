@@ -57,10 +57,11 @@ func (c *Crawler) requestPeersForHash(
 	})
 	if len(res.Nodes) > 0 {
 		cancelCtx, cancel := context.WithTimeout(ctx, time.Second)
+	nodeLoop:
 		for _, n := range res.Nodes {
 			select {
 			case <-cancelCtx.Done():
-				break
+				break nodeLoop
 			case c.discoveredNodes.In() <- ktable.NewNode(n.ID, n.Addr):
 				continue
 			}
