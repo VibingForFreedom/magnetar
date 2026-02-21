@@ -112,6 +112,11 @@ func runServe(fs *flag.FlagSet) error {
 		if err != nil {
 			return fmt.Errorf("initializing sqlite store: %w", err)
 		}
+	} else if cfg.IsMariaDB() {
+		st, err = store.NewMariaDBStore(ctx, cfg)
+		if err != nil {
+			return fmt.Errorf("initializing mariadb store: %w", err)
+		}
 	} else {
 		return fmt.Errorf("unsupported database backend: %s", cfg.DBBackend)
 	}
@@ -230,17 +235,35 @@ func runMigrate(args []string) error {
 	from := fs.String("from", "", "Source backend type (sqlite, mariadb)")
 	fromPath := fs.String("from-path", "", "Source database path or DSN")
 	to := fs.String("to", "", "Destination backend type (sqlite, mariadb)")
-	toDSN := fs.String("to-dsn", "", "Destination database DSN")
+	toDSN := fs.String("to-dsn", "", "Destination database path or DSN")
+	batchSize := fs.Int("batch-size", 5000, "Rows per batch")
 
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("parsing flags: %w", err)
 	}
 
-	fmt.Println("Migrate command - not yet implemented")
-	fmt.Printf("  From: %s (%s)\n", *from, *fromPath)
-	fmt.Printf("  To: %s (%s)\n", *to, *toDSN)
-	fmt.Println("\nThis feature will be implemented in Phase 5.")
-	return nil
+	if *from == "" || *fromPath == "" || *to == "" || *toDSN == "" {
+		return fmt.Errorf("all flags required: --from, --from-path, --to, --to-dsn")
+	}
+
+	validBackends := map[string]bool{"sqlite": true, "mariadb": true}
+	if !validBackends[*from] {
+		return fmt.Errorf("invalid --from backend: %q (must be sqlite or mariadb)", *from)
+	}
+	if !validBackends[*to] {
+		return fmt.Errorf("invalid --to backend: %q (must be sqlite or mariadb)", *to)
+	}
+
+	config.SetupLogging(&config.Config{LogLevel: "info"})
+
+	ctx := context.Background()
+	return store.RunMigration(ctx, store.MigrationConfig{
+		FromBackend: *from,
+		FromPath:    *fromPath,
+		ToBackend:   *to,
+		ToDSN:       *toDSN,
+		BatchSize:   *batchSize,
+	})
 }
 
 func runBackup(args []string) error {

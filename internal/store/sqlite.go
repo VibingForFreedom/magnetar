@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,7 +11,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/magnetar/magnetar/internal/compress"
 	"github.com/magnetar/magnetar/internal/config"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -173,62 +171,12 @@ func (s *SQLiteStore) Migrate(ctx context.Context) error {
 	return nil
 }
 
-func (s *SQLiteStore) compressFiles(files []File) ([]byte, error) {
-	if len(files) == 0 {
-		return nil, nil
-	}
-	data, err := encodeFiles(files)
-	if err != nil {
-		return nil, err
-	}
-	return compress.Compress(data)
-}
-
-func (s *SQLiteStore) decompressFiles(data []byte) ([]File, error) {
-	if len(data) == 0 {
-		return nil, nil
-	}
-	decompressed, err := compress.Decompress(data)
-	if err != nil {
-		return nil, fmt.Errorf("decompressing files: %w", err)
-	}
-	return decodeFiles(decompressed)
-}
-
-func encodeFiles(files []File) ([]byte, error) {
-	type fileJSON struct {
-		Path string `json:"path"`
-		Size int64  `json:"size"`
-	}
-	var fjs []fileJSON
-	for _, f := range files {
-		fjs = append(fjs, fileJSON{Path: f.Path, Size: f.Size})
-	}
-	return json.Marshal(fjs)
-}
-
-func decodeFiles(data []byte) ([]File, error) {
-	type fileJSON struct {
-		Path string `json:"path"`
-		Size int64  `json:"size"`
-	}
-	var fjs []fileJSON
-	if err := json.Unmarshal(data, &fjs); err != nil {
-		return nil, err
-	}
-	var files []File
-	for _, fj := range fjs {
-		files = append(files, File{Path: fj.Path, Size: fj.Size})
-	}
-	return files, nil
-}
-
 func (s *SQLiteStore) UpsertTorrent(ctx context.Context, t *Torrent) error {
 	if t == nil || len(t.InfoHash) != 20 {
 		return ErrInvalidHash
 	}
 
-	filesBlob, err := s.compressFiles(t.Files)
+	filesBlob, err := compressFiles(t.Files)
 	if err != nil {
 		return fmt.Errorf("compressing files: %w", err)
 	}
@@ -292,7 +240,7 @@ func (s *SQLiteStore) UpsertTorrents(ctx context.Context, ts []*Torrent) error {
 				return ErrInvalidHash
 			}
 
-			filesBlob, err := s.compressFiles(t.Files)
+			filesBlob, err := compressFiles(t.Files)
 			if err != nil {
 				stmt.Close()
 				tx.Rollback()
@@ -336,7 +284,7 @@ func (s *SQLiteStore) GetTorrent(ctx context.Context, infoHash []byte) (*Torrent
 	FROM torrents WHERE info_hash = ?`
 
 	row := s.reader.QueryRowContext(ctx, query, infoHash)
-	t, err := s.scanTorrent(row)
+	t, err := scanRow(row)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrNotFound
@@ -382,7 +330,7 @@ func (s *SQLiteStore) BulkLookup(ctx context.Context, hashes [][]byte) ([]*Torre
 
 	var torrents []*Torrent
 	for rows.Next() {
-		t, err := s.scanTorrentFromRows(rows)
+		t, err := scanRow(rows)
 		if err != nil {
 			return nil, fmt.Errorf("scanning torrent: %w", err)
 		}
@@ -494,7 +442,7 @@ func (s *SQLiteStore) SearchByName(ctx context.Context, query string, opts Searc
 
 	var torrents []*Torrent
 	for rows.Next() {
-		t, err := s.scanTorrentFromRows(rows)
+		t, err := scanRow(rows)
 		if err != nil {
 			return nil, fmt.Errorf("scanning torrent: %w", err)
 		}
@@ -543,7 +491,7 @@ func (s *SQLiteStore) SearchByExternalID(ctx context.Context, id ExternalID) ([]
 
 	var torrents []*Torrent
 	for rows.Next() {
-		t, err := s.scanTorrentFromRows(rows)
+		t, err := scanRow(rows)
 		if err != nil {
 			return nil, fmt.Errorf("scanning torrent: %w", err)
 		}
@@ -582,7 +530,7 @@ func (s *SQLiteStore) FetchUnmatched(ctx context.Context, limit int) ([]*Torrent
 
 	var torrents []*Torrent
 	for rows.Next() {
-		t, err := s.scanTorrentFromRows(rows)
+		t, err := scanRow(rows)
 		if err != nil {
 			return nil, fmt.Errorf("scanning torrent: %w", err)
 		}
@@ -749,72 +697,39 @@ func (s *SQLiteStore) Backup(ctx context.Context, destPath string) error {
 	return nil
 }
 
-func (s *SQLiteStore) scanTorrent(row *sql.Row) (*Torrent, error) {
-	t := &Torrent{}
-	var filesBlob []byte
-	var imdbID sql.NullString
-	var tmdbID, tvdbID, anilistID, kitsuID, mediaYear sql.NullInt64
-	var size sql.NullInt64
-	var updatedAt sql.NullInt64
 
-	err := row.Scan(
-		&t.InfoHash, &t.Name, &size, &t.Category, &t.Quality, &filesBlob,
-		&imdbID, &tmdbID, &tvdbID, &anilistID, &kitsuID, &mediaYear,
-		&t.MatchStatus, &t.MatchAttempts, &t.MatchAfter,
-		&t.Seeders, &t.Leechers, &t.Source, &t.DiscoveredAt, &updatedAt,
-	)
+// fetchPage is used by the migration tool to stream rows via keyset pagination.
+func (s *SQLiteStore) fetchPage(ctx context.Context, afterDiscoveredAt int64, afterInfoHash []byte, limit int) ([]*Torrent, error) {
+	query := `SELECT ` + torrentSelectColumns + `
+	FROM torrents
+	WHERE (discovered_at, info_hash) > (?, ?)
+	ORDER BY discovered_at ASC, info_hash ASC
+	LIMIT ?`
+
+	if afterInfoHash == nil {
+		afterInfoHash = make([]byte, 20)
+	}
+
+	rows, err := s.reader.QueryContext(ctx, query, afterDiscoveredAt, afterInfoHash, limit)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("fetching page: %w", err)
+	}
+	defer rows.Close()
+
+	var torrents []*Torrent
+	for rows.Next() {
+		t, err := scanRow(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scanning torrent: %w", err)
+		}
+		torrents = append(torrents, t)
 	}
 
-	t.Size = size.Int64
-	t.UpdatedAt = updatedAt.Int64
-	if filesBlob != nil {
-		t.Files, _ = s.decompressFiles(filesBlob)
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating rows: %w", err)
 	}
 
-	t.IMDBID = imdbID.String
-	t.TMDBID = int(tmdbID.Int64)
-	t.TVDBID = int(tvdbID.Int64)
-	t.AniListID = int(anilistID.Int64)
-	t.KitsuID = int(kitsuID.Int64)
-	t.MediaYear = int(mediaYear.Int64)
-
-	return t, nil
-}
-
-func (s *SQLiteStore) scanTorrentFromRows(rows *sql.Rows) (*Torrent, error) {
-	t := &Torrent{}
-	var filesBlob []byte
-	var imdbID sql.NullString
-	var tmdbID, tvdbID, anilistID, kitsuID, mediaYear sql.NullInt64
-	var size sql.NullInt64
-	var updatedAt sql.NullInt64
-
-	err := rows.Scan(
-		&t.InfoHash, &t.Name, &size, &t.Category, &t.Quality, &filesBlob,
-		&imdbID, &tmdbID, &tvdbID, &anilistID, &kitsuID, &mediaYear,
-		&t.MatchStatus, &t.MatchAttempts, &t.MatchAfter,
-		&t.Seeders, &t.Leechers, &t.Source, &t.DiscoveredAt, &updatedAt,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	t.Size = size.Int64
-	t.UpdatedAt = updatedAt.Int64
-	if filesBlob != nil {
-		t.Files, _ = s.decompressFiles(filesBlob)
-	}
-
-	t.IMDBID = imdbID.String
-	t.TMDBID = int(tmdbID.Int64)
-	t.TVDBID = int(tvdbID.Int64)
-	t.AniListID = int(anilistID.Int64)
-	t.KitsuID = int(kitsuID.Int64)
-	t.MediaYear = int(mediaYear.Int64)
-
-	return t, nil
+	return torrents, nil
 }
 
 func (s *SQLiteStore) incrementInsertCount() {
@@ -865,16 +780,3 @@ func (s *SQLiteStore) maintenanceLoop() {
 	}
 }
 
-func nullString(s string) interface{} {
-	if s == "" {
-		return nil
-	}
-	return s
-}
-
-func nullInt(i int) interface{} {
-	if i == 0 {
-		return nil
-	}
-	return i
-}

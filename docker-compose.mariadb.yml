@@ -1,0 +1,36 @@
+services:
+  mariadb:
+    image: mariadb:11.4
+    environment:
+      MARIADB_ROOT_PASSWORD: magnetar
+      MARIADB_DATABASE: magnetar
+      MARIADB_USER: magnetar
+      MARIADB_PASSWORD: magnetar
+    ports:
+      - "3306:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./deploy/mariadb/my.cnf:/etc/mysql/conf.d/magnetar.cnf:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  magnetar:
+    build: .
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    environment:
+      MAGNETAR_DB_BACKEND: mariadb
+      MAGNETAR_DB_DSN: "magnetar:magnetar@tcp(mariadb:3306)/magnetar?parseTime=true"
+      MAGNETAR_PORT: 3333
+      MAGNETAR_CRAWL_ENABLED: "true"
+      MAGNETAR_MATCH_ENABLED: "false"
+    ports:
+      - "3333:3333"
+
+volumes:
+  mariadb_data:
