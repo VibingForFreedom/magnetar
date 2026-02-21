@@ -14,6 +14,7 @@ import (
 	"github.com/magnetar/magnetar/internal/api"
 	"github.com/magnetar/magnetar/internal/config"
 	"github.com/magnetar/magnetar/internal/crawler"
+	"github.com/magnetar/magnetar/internal/matcher"
 	"github.com/magnetar/magnetar/internal/store"
 )
 
@@ -172,6 +173,24 @@ func runServe(fs *flag.FlagSet) error {
 		logger.Info("DHT crawler started", "port", cfg.CrawlPort, "workers", cfg.CrawlWorkers)
 	}
 
+	// Start metadata matcher if enabled
+	var metaMatcher *matcher.Matcher
+	if cfg.MatchEnabled {
+		matchCfg := matcher.NewConfig(cfg)
+		metaMatcher = matcher.New(matchCfg, st, logger)
+
+		go func() {
+			if err := metaMatcher.Start(ctx); err != nil {
+				logger.Error("matcher error", "error", err)
+			}
+		}()
+
+		logger.Info("metadata matcher started",
+			"interval", cfg.MatchInterval,
+			"batch_size", cfg.MatchBatchSize,
+		)
+	}
+
 	select {
 	case sig := <-sigChan:
 		logger.Info("received shutdown signal", "signal", sig)
@@ -181,6 +200,12 @@ func runServe(fs *flag.FlagSet) error {
 	}
 
 	cancel()
+
+	// Stop metadata matcher
+	if metaMatcher != nil {
+		logger.Info("stopping metadata matcher")
+		metaMatcher.Stop()
+	}
 
 	// Stop DHT crawler
 	if dhtCrawler != nil {

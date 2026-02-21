@@ -336,13 +336,14 @@ func (e ExternalID) String() string {
 }
 
 type MatchResult struct {
-	Status    MatchStatus
-	IMDBID    string
-	TMDBID    int
-	TVDBID    int
-	AniListID int
-	KitsuID   int
-	Year      int
+	Status     MatchStatus
+	IMDBID     string
+	TMDBID     int
+	TVDBID     int
+	AniListID  int
+	KitsuID    int
+	Year       int
+	MatchAfter int64 // unix timestamp for next retry (0 = eligible immediately)
 }
 
 type DBStats struct {

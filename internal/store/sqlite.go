@@ -611,6 +611,7 @@ func (s *SQLiteStore) UpdateMatchResult(ctx context.Context, infoHash []byte, m 
 		kitsu_id = ?,
 		media_year = ?,
 		match_attempts = match_attempts + 1,
+		match_after = ?,
 		updated_at = ?
 	WHERE info_hash = ?`
 
@@ -622,6 +623,7 @@ func (s *SQLiteStore) UpdateMatchResult(ctx context.Context, infoHash []byte, m 
 		nullInt(m.AniListID),
 		nullInt(m.KitsuID),
 		nullInt(m.Year),
+		m.MatchAfter,
 		time.Now().Unix(),
 		infoHash,
 	)
