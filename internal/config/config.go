@@ -78,7 +78,7 @@ func Load() (*Config, error) {
 
 		CrawlEnabled: getEnvBool("MAGNETAR_CRAWL_ENABLED", true),
 		CrawlRate:    getEnvInt("MAGNETAR_CRAWL_RATE", 1000),
-		CrawlWorkers: getEnvInt("MAGNETAR_CRAWL_WORKERS", 4),
+		CrawlWorkers: getEnvInt("MAGNETAR_CRAWL_WORKERS", 8),
 		CrawlPort:    getEnvInt("MAGNETAR_CRAWL_PORT", 6881),
 
 		MatchEnabled:     getEnvBool("MAGNETAR_MATCH_ENABLED", true),

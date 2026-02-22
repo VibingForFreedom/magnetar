@@ -1,7 +1,12 @@
 package tasklog
 
 import (
+	"context"
+	"fmt"
+	"log/slog"
+	"math"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -16,16 +21,52 @@ type Entry struct {
 	LastError  bool   `json:"last_error"`
 }
 
+// Persister provides key-value persistence for task timestamps.
+type Persister interface {
+	GetSetting(ctx context.Context, key string) (string, error)
+	SetSetting(ctx context.Context, key, value string) error
+}
+
 // Registry is a thread-safe in-memory registry of scheduled task statuses.
 type Registry struct {
-	mu      sync.RWMutex
-	entries map[string]*Entry
+	mu        sync.RWMutex
+	entries   map[string]*Entry
+	persister Persister
 }
 
 // New creates a new task registry.
 func New() *Registry {
 	return &Registry{
 		entries: make(map[string]*Entry),
+	}
+}
+
+// SetPersister attaches a persistence backend and hydrates existing entries
+// from stored timestamps.
+func (r *Registry) SetPersister(ctx context.Context, p Persister) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.persister = p
+
+	for name, e := range r.entries {
+		key := settingKey(name)
+		val, err := p.GetSetting(ctx, key)
+		if err != nil || val == "" {
+			continue
+		}
+		ts, parseErr := strconv.ParseInt(val, 10, 64)
+		if parseErr != nil {
+			continue
+		}
+		e.LastRun = ts
+
+		d, durErr := time.ParseDuration(e.Interval)
+		if durErr == nil && d > 0 {
+			e.NextRun = ts + int64(d.Seconds())
+		}
+
+		slog.Info("hydrated task timestamp", "task", name, "last_run", time.Unix(ts, 0).Format(time.RFC3339))
 	}
 }
 
@@ -71,6 +112,30 @@ func (r *Registry) Record(name string, result string, err error) {
 	} else {
 		e.NextRun = 0
 	}
+
+	// Persist the timestamp (fire-and-forget)
+	if r.persister != nil {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if pErr := r.persister.SetSetting(ctx, settingKey(name), strconv.FormatInt(now, 10)); pErr != nil {
+				slog.Error("failed to persist task timestamp", "task", name, "error", pErr)
+			}
+		}()
+	}
+}
+
+// TimeSinceLastRun returns how long ago the named task last ran.
+// Returns math.MaxInt64 duration if the task was never run or is unknown.
+func (r *Registry) TimeSinceLastRun(name string) time.Duration {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	e, ok := r.entries[name]
+	if !ok || e.LastRun == 0 {
+		return time.Duration(math.MaxInt64)
+	}
+	return time.Since(time.Unix(e.LastRun, 0))
 }
 
 // Snapshot returns a sorted copy of all registered task entries.
@@ -88,4 +153,8 @@ func (r *Registry) Snapshot() []Entry {
 	})
 
 	return entries
+}
+
+func settingKey(name string) string {
+	return fmt.Sprintf("tasklog:%s:last_run", name)
 }

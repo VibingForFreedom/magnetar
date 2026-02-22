@@ -4,7 +4,7 @@
 	import { formatNumber, formatRate, formatUptime, formatBytes } from '$lib/utils';
 	import StatCard from '$lib/components/StatCard.svelte';
 	import RateGraph from '$lib/components/RateGraph.svelte';
-	import { Database, Radio, Zap, Target, Clock, HardDrive, Radar } from 'lucide-svelte';
+	import { Database, Radio, Zap, Target, HardDrive, Radar } from 'lucide-svelte';
 	import { onMount } from 'svelte';
 
 	let stats = $state<Stats | null>(null);
@@ -67,38 +67,35 @@
 			icon={HardDrive}
 			color="text-accent-blue"
 		/>
-		<StatCard
-			label="Uptime"
-			value={$metrics ? formatUptime($metrics.uptime_seconds) : '--'}
-			subtitle={stats ? `DB ${formatBytes(stats.db_size)}` : undefined}
-			icon={Clock}
-			color="text-accent-green"
-		/>
 	</div>
 
 	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-		<div class="rounded-lg border border-border bg-bg-secondary p-4">
-			<div class="mb-2 text-xs font-medium uppercase tracking-wider text-text-secondary">Discovery Rate (60s)</div>
-			<RateGraph data={$rateHistory} color="#6ba38a" height={48} />
+		<div class="flex flex-col justify-center rounded-lg border border-border bg-bg-secondary p-3 text-center">
+			<div class="text-xs font-medium uppercase tracking-wider text-text-secondary">Discovery Rate (60s)</div>
+			<div class="mb-1 text-2xl font-semibold tracking-tight text-text-primary">{$metrics ? `${formatNumber($metrics.torrents_discovered)} total` : '--'}</div>
+			<RateGraph data={$rateHistory} color="#6ba38a" height={32} />
 		</div>
-		<div class="rounded-lg border border-border bg-bg-secondary p-4">
-			<div class="mb-2 text-xs font-medium uppercase tracking-wider text-text-secondary">Metadata Rate (60s)</div>
-			<RateGraph data={$metadataRateHistory} color="#af9a6b" height={48} />
+		<div class="flex flex-col justify-center rounded-lg border border-border bg-bg-secondary p-3 text-center">
+			<div class="text-xs font-medium uppercase tracking-wider text-text-secondary">Metadata Rate (60s)</div>
+			<div class="mb-1 text-2xl font-semibold tracking-tight text-text-primary">{$metrics ? `${formatNumber($metrics.metadata_fetched)} fetched` : '--'}</div>
+			<RateGraph data={$metadataRateHistory} color="#af9a6b" height={32} />
 		</div>
-		<div class="rounded-lg border border-border bg-bg-secondary p-4">
-			<div class="mb-2 text-xs font-medium uppercase tracking-wider text-text-secondary">Match Rate (60s)</div>
-			<RateGraph data={$matchRateHistory} color="#8a6baf" height={48} />
+		<div class="flex flex-col justify-center rounded-lg border border-border bg-bg-secondary p-3 text-center">
+			<div class="text-xs font-medium uppercase tracking-wider text-text-secondary">Match Rate (60s)</div>
+			<div class="mb-1 text-2xl font-semibold tracking-tight text-text-primary">{$metrics ? `${formatNumber($metrics.match_successes)} / ${formatNumber($metrics.match_attempts)} attempts` : '--'}</div>
+			<RateGraph data={$matchRateHistory} color="#8a6baf" height={32} />
 		</div>
-		<div class="rounded-lg border border-border bg-bg-secondary p-4">
-			<div class="mb-2 text-xs font-medium uppercase tracking-wider text-text-secondary">Tracker Scrape Rate (60s)</div>
-			<RateGraph data={$trackerScrapeRateHistory} color="#af6b6b" height={48} />
+		<div class="flex flex-col justify-center rounded-lg border border-border bg-bg-secondary p-3 text-center">
+			<div class="text-xs font-medium uppercase tracking-wider text-text-secondary">Tracker Scrape Rate (60s)</div>
+			<div class="mb-1 text-2xl font-semibold tracking-tight text-text-primary">{$metrics ? `${formatNumber($metrics.tracker_scrape_successes)} / ${formatNumber($metrics.tracker_scrape_attempts)} scraped` : '--'}</div>
+			<RateGraph data={$trackerScrapeRateHistory} color="#af6b6b" height={32} />
 		</div>
 	</div>
 
 	{#if stats}
 		<div class="rounded-lg border border-border bg-bg-secondary p-4">
 			<div class="mb-3 text-xs font-medium uppercase tracking-wider text-text-secondary">Database Breakdown</div>
-			<div class="flex gap-8 text-sm">
+			<div class="flex flex-wrap gap-8 text-sm">
 				<div>
 					<span class="text-text-secondary">Unmatched:</span>
 					<span class="ml-1 font-medium text-accent-amber">{formatNumber(stats.unmatched)}</span>
@@ -111,6 +108,16 @@
 					<span class="text-text-secondary">Failed:</span>
 					<span class="ml-1 font-medium text-accent-red">{formatNumber(stats.failed)}</span>
 				</div>
+				<div>
+					<span class="text-text-secondary">DB Size:</span>
+					<span class="ml-1 font-medium text-text-primary">{formatBytes(stats.db_size)}</span>
+				</div>
+				{#if $metrics}
+					<div>
+						<span class="text-text-secondary">Uptime:</span>
+						<span class="ml-1 font-medium text-text-primary">{formatUptime($metrics.uptime_seconds)}</span>
+					</div>
+				{/if}
 			</div>
 		</div>
 	{/if}

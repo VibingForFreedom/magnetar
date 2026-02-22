@@ -172,13 +172,14 @@ func runServe(_ *flag.FlagSet) error { //nolint:unparam
 	registry.Register("Rejected Hash Purge", "24h")
 	registry.Register("Junk Torrent Purge", "24h")
 
-	// Wire registry to store
+	// Wire registry to store and enable persistence
 	switch s := st.(type) {
 	case *store.SQLiteStore:
 		s.SetTaskRegistry(registry)
 	case *store.MariaDBStore:
 		s.SetTaskRegistry(registry)
 	}
+	registry.SetPersister(ctx, st)
 
 	m := metrics.New()
 
@@ -241,9 +242,6 @@ func runServe(_ *flag.FlagSet) error { //nolint:unparam
 		registry.Register("Anime DB Refresh", "24h")
 		adb = animedb.New(logger)
 		adb.SetTaskRegistry(registry)
-		if err := adb.Load(ctx); err != nil {
-			logger.Warn("anime DB initial load failed, will retry", "error", err)
-		}
 		go adb.Start(ctx)
 	}
 

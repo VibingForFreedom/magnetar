@@ -84,14 +84,35 @@ func (db *AnimeDB) Load(ctx context.Context) error {
 	return nil
 }
 
-// Start begins a background goroutine that refreshes the database daily.
-// It calls Load immediately, then refreshes every 24 hours.
+// Start begins a background goroutine that refreshes the database periodically.
+// It checks persisted timestamps to avoid re-downloading if recently loaded.
 func (db *AnimeDB) Start(ctx context.Context) {
-	err := db.Load(ctx)
-	if err != nil {
-		db.logger.Error("initial anime db load failed", "error", err)
+	sinceLastRun := db.timeSinceLastRun()
+
+	if sinceLastRun < refreshInterval {
+		remaining := refreshInterval - sinceLastRun
+		db.logger.Info("anime db loaded recently, skipping initial download",
+			"last_run_ago", sinceLastRun.Round(time.Minute).String(),
+			"next_refresh_in", remaining.Round(time.Minute).String(),
+		)
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(remaining):
+			err := db.Load(ctx)
+			if err != nil {
+				db.logger.Error("anime db refresh failed", "error", err)
+			}
+			db.recordTaskResult(err)
+		}
+	} else {
+		err := db.Load(ctx)
+		if err != nil {
+			db.logger.Error("initial anime db load failed", "error", err)
+		}
+		db.recordTaskResult(err)
 	}
-	db.recordTaskResult(err)
 
 	ticker := time.NewTicker(refreshInterval)
 	defer ticker.Stop()
@@ -108,6 +129,13 @@ func (db *AnimeDB) Start(ctx context.Context) {
 			db.recordTaskResult(err)
 		}
 	}
+}
+
+func (db *AnimeDB) timeSinceLastRun() time.Duration {
+	if db.taskRegistry == nil {
+		return time.Duration(1<<63 - 1) // max duration — always load
+	}
+	return db.taskRegistry.TimeSinceLastRun("Anime DB Refresh")
 }
 
 func (db *AnimeDB) recordTaskResult(err error) {

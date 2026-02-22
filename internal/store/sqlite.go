@@ -997,6 +997,38 @@ func (s *SQLiteStore) Analyze(ctx context.Context) error {
 	return nil
 }
 
+func (s *SQLiteStore) BulkUpdateSeedersLeechers(ctx context.Context, updates []SeedersLeechersUpdate) error {
+	if len(updates) == 0 {
+		return nil
+	}
+
+	tx, err := s.writer.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("beginning transaction: %w", err)
+	}
+
+	stmt, err := tx.PrepareContext(ctx,
+		`UPDATE torrents SET seeders = ?, leechers = ?, updated_at = ? WHERE info_hash = ?`)
+	if err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("preparing statement: %w", err)
+	}
+	defer func() { _ = stmt.Close() }()
+
+	now := time.Now().Unix()
+	for _, u := range updates {
+		if _, err := stmt.ExecContext(ctx, u.Seeders, u.Leechers, now, u.InfoHash); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("updating seeders/leechers: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing transaction: %w", err)
+	}
+	return nil
+}
+
 func (s *SQLiteStore) IntegrityCheck(ctx context.Context) error {
 	var result string
 	if err := s.reader.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&result); err != nil {

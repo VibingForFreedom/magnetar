@@ -385,10 +385,18 @@ type Store interface {
 	RejectedHashCount(ctx context.Context) (int64, error)
 	PurgeOldRejected(ctx context.Context, olderThan time.Duration) (int64, error)
 	PurgeJunkTorrents(ctx context.Context) (int64, error)
+	BulkUpdateSeedersLeechers(ctx context.Context, updates []SeedersLeechersUpdate) error
 	Migrate(ctx context.Context) error
 	Close() error
 	Checkpoint(ctx context.Context) error
 	Analyze(ctx context.Context) error
+}
+
+// SeedersLeechersUpdate holds a single seeders/leechers update for a torrent.
+type SeedersLeechersUpdate struct {
+	InfoHash []byte
+	Seeders  int
+	Leechers int
 }
 
 var (

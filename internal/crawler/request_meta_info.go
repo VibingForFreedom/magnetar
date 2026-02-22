@@ -38,24 +38,49 @@ func (c *Crawler) doRequestMetaInfo(
 	hash protocol.ID,
 	peers []netip.AddrPort,
 ) (metainforequester.Response, error) {
+	// Fan out to up to 3 peers concurrently; first success wins.
+	maxConcurrent := 3
+	if len(peers) < maxConcurrent {
+		maxConcurrent = len(peers)
+	}
+
+	type result struct {
+		resp metainforequester.Response
+		err  error
+	}
+
+	fanCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	results := make(chan result, maxConcurrent)
 	var errs []error
-	errsMutex := sync.Mutex{}
-	addErr := func(err error) {
-		errsMutex.Lock()
-		errs = append(errs, err)
-		errsMutex.Unlock()
+	var errsMutex sync.Mutex
+
+	for i := 0; i < maxConcurrent; i++ {
+		go func(p netip.AddrPort) {
+			res, err := c.metainfoRequester.Request(fanCtx, hash, p)
+			if err != nil {
+				errsMutex.Lock()
+				errs = append(errs, err)
+				errsMutex.Unlock()
+				results <- result{err: err}
+				return
+			}
+			if banErr := c.banningChecker.Check(res.Info); banErr != nil {
+				results <- result{err: banErr}
+				return
+			}
+			results <- result{resp: res}
+		}(peers[i])
 	}
-	for _, p := range peers {
-		res, err := c.metainfoRequester.Request(ctx, hash, p)
-		if err != nil {
-			addErr(err)
-			continue
+
+	for i := 0; i < maxConcurrent; i++ {
+		r := <-results
+		if r.err == nil {
+			cancel() // cancel remaining peers
+			return r.resp, nil
 		}
-		if banErr := c.banningChecker.Check(res.Info); banErr != nil {
-			// Banned content — just skip, no blocking manager
-			return metainforequester.Response{}, banErr
-		}
-		return res, nil
 	}
+
 	return metainforequester.Response{}, errors.Join(errs...)
 }

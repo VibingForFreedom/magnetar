@@ -106,7 +106,7 @@ func (c *Config) ApplySetting(key, value string) {
 			c.CrawlRate = n
 		}
 	case KeyCrawlWorkers:
-		if n, err := strconv.Atoi(value); err == nil && n >= 1 && n <= 4 {
+		if n, err := strconv.Atoi(value); err == nil && n >= 1 && n <= 10 {
 			c.CrawlWorkers = n
 		}
 	case KeyLogLevel:
