@@ -18,7 +18,10 @@ const (
 	KeyCrawlRate        = "crawl_rate"
 	KeyCrawlWorkers     = "crawl_workers"
 	KeyLogLevel         = "log_level"
-	KeyAnimeDBEnabled   = "animedb_enabled"
+	KeyAnimeDBEnabled        = "animedb_enabled"
+	KeyFilterAdultPatterns   = "filter_adult_patterns"
+	KeyFilterAdultNames      = "filter_adult_names"
+	KeyFilterJunkNames       = "filter_junk_names"
 )
 
 // EditableKeys lists all setting keys that can be modified at runtime via the API.
@@ -33,6 +36,9 @@ var EditableKeys = []string{
 	KeyCrawlWorkers,
 	KeyLogLevel,
 	KeyAnimeDBEnabled,
+	KeyFilterAdultPatterns,
+	KeyFilterAdultNames,
+	KeyFilterJunkNames,
 }
 
 // IsEditableKey returns true if the key is in the editable keys list.
@@ -111,6 +117,18 @@ func (c *Config) ApplySetting(key, value string) {
 	case KeyAnimeDBEnabled:
 		if b, err := strconv.ParseBool(value); err == nil {
 			c.AnimeDBEnabled = b
+		}
+	case KeyFilterAdultPatterns:
+		if b, err := strconv.ParseBool(value); err == nil {
+			c.FilterAdultPatterns = b
+		}
+	case KeyFilterAdultNames:
+		if b, err := strconv.ParseBool(value); err == nil {
+			c.FilterAdultNames = b
+		}
+	case KeyFilterJunkNames:
+		if b, err := strconv.ParseBool(value); err == nil {
+			c.FilterJunkNames = b
 		}
 	}
 }

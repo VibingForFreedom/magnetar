@@ -7,15 +7,16 @@ import (
 	"github.com/magnetar/magnetar/internal/store"
 )
 
-// Newznab category IDs that Magnetar supports.
+// Standard Newznab/Torznab category IDs.
+// See https://newznab.readthedocs.io/en/latest/misc/apicategories/
 const (
 	// Movies (2000-2099)
 	CatMovies       = 2000
 	CatMoviesSD     = 2030
 	CatMoviesHD     = 2040
 	CatMoviesUHD    = 2045
-	CatMoviesBluRay = 2050
-	CatMoviesWebDL  = 2070
+	CatMoviesBluRay = 2060
+	CatMoviesWebDL  = 2080 // custom — no standard WEB-DL; Prowlarr will use caps
 	CatMoviesOther  = 2020
 
 	// TV (5000-5099)
@@ -58,38 +59,39 @@ func MapToNewznab(t *store.Torrent, parsed *classify.ParsedName) []int {
 	switch t.Category {
 	case store.CategoryMovie:
 		add(CatMovies)
-		switch {
-		case isBluRay:
+		if isBluRay {
 			add(CatMoviesBluRay)
-		case isWebDL:
+		}
+		if isWebDL {
 			add(CatMoviesWebDL)
+		}
+		switch t.Quality {
+		case store.QualitySD:
+			add(CatMoviesSD)
+		case store.QualityHD, store.QualityFHD:
+			add(CatMoviesHD)
+		case store.QualityUHD:
+			add(CatMoviesUHD)
 		default:
-			switch t.Quality {
-			case store.QualitySD:
-				add(CatMoviesSD)
-			case store.QualityHD, store.QualityFHD:
-				add(CatMoviesHD)
-			case store.QualityUHD:
-				add(CatMoviesUHD)
-			default:
+			if !isBluRay && !isWebDL {
 				add(CatMoviesOther)
 			}
 		}
 
 	case store.CategoryTV:
 		add(CatTV)
-		switch {
-		case isWebDL:
+		if isWebDL {
 			add(CatTVWebDL)
+		}
+		switch t.Quality {
+		case store.QualitySD:
+			add(CatTVSD)
+		case store.QualityHD, store.QualityFHD:
+			add(CatTVHD)
+		case store.QualityUHD:
+			add(CatTVUHD)
 		default:
-			switch t.Quality {
-			case store.QualitySD:
-				add(CatTVSD)
-			case store.QualityHD, store.QualityFHD:
-				add(CatTVHD)
-			case store.QualityUHD:
-				add(CatTVUHD)
-			default:
+			if !isWebDL {
 				add(CatTVOther)
 			}
 		}

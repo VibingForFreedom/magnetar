@@ -477,8 +477,14 @@ func (s *SQLiteStore) SearchByName(ctx context.Context, query string, opts Searc
 		limit = 1000
 	}
 
+	ftsQuery := sanitizeFTSQuery(query)
+	if ftsQuery == "" {
+		return &SearchResult{Total: 0}, nil
+	}
+	ftsQuery += "*"
+
 	countQuery := `SELECT COUNT(*) FROM torrents_fts WHERE torrents_fts MATCH ?`
-	args := []interface{}{query + "*"}
+	args := []interface{}{ftsQuery}
 
 	searchQuery := `
 	SELECT t.info_hash, t.name, t.size, t.category, t.quality, t.files,

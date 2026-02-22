@@ -45,12 +45,12 @@ type torznabError struct {
 }
 
 type torznabItem struct {
-	Title     string           `xml:"title"`
-	GUID      string           `xml:"guid"`
-	Size      int64            `xml:"size"`
+	Title string           `xml:"title"`
+	GUID  string           `xml:"guid"`
+	Size  int64            `xml:"size"`
 	Enclosure torznabEnclosure `xml:"enclosure"`
 	PubDate   string           `xml:"pubDate"`
-	Attrs     []newznabAttr    `xml:"newznab:attr"`
+	Attrs []itemAttr       `xml:"torznab:attr"`
 }
 
 type torznabEnclosure struct {
@@ -59,7 +59,7 @@ type torznabEnclosure struct {
 	Type   string `xml:"type,attr"`
 }
 
-type newznabAttr struct {
+type itemAttr struct {
 	Name  string `xml:"name,attr"`
 	Value string `xml:"value,attr"`
 }
@@ -271,19 +271,24 @@ func buildTorznabItems(torrents []*store.Torrent) []torznabItem {
 		}
 		parsed := classify.Parse(t.Name)
 		cats := MapToNewznab(t, parsed)
-		attrs := make([]newznabAttr, 0, len(cats)+4)
+
+		attrs := make([]itemAttr, 0, len(cats)+6)
 		for _, cat := range cats {
-			attrs = append(attrs, newznabAttr{Name: "category", Value: strconv.Itoa(cat)})
+			attrs = append(attrs, itemAttr{Name: "category", Value: strconv.Itoa(cat)})
 		}
 		imdb := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(t.IMDBID)), "tt")
 		if imdb != "" {
-			attrs = append(attrs, newznabAttr{Name: "imdb", Value: imdb})
+			attrs = append(attrs, itemAttr{Name: "imdb", Value: imdb})
 		}
 		if t.TMDBID != 0 {
-			attrs = append(attrs, newznabAttr{Name: "tmdb", Value: strconv.Itoa(t.TMDBID)})
+			attrs = append(attrs, itemAttr{Name: "tmdb", Value: strconv.Itoa(t.TMDBID)})
 		}
-		attrs = append(attrs, newznabAttr{Name: "seeders", Value: strconv.Itoa(t.Seeders)})
-		attrs = append(attrs, newznabAttr{Name: "peers", Value: strconv.Itoa(t.Seeders + t.Leechers)})
+		attrs = append(attrs,
+			itemAttr{Name: "seeders", Value: strconv.Itoa(t.Seeders)},
+			itemAttr{Name: "peers", Value: strconv.Itoa(t.Seeders + t.Leechers)},
+			itemAttr{Name: "downloadvolumefactor", Value: "0"},
+			itemAttr{Name: "uploadvolumefactor", Value: "1"},
+		)
 
 		infoHash := t.InfoHashHex()
 		items = append(items, torznabItem{

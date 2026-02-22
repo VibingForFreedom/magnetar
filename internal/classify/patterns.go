@@ -101,6 +101,8 @@ var (
 	siteWatermarkPattern = regexp.MustCompile(`^(?i)(?:www\.)\S+\.\S+\s+[-–—]\s+`)
 	// Site@prefix@ watermarks: "site@prefix@" at start of name
 	siteAtWatermarkPattern = regexp.MustCompile(`^[^\s@]+@[^\s@]+@`)
+	// Domain.tld@ watermarks: "domain.com@" at start of name (single @)
+	siteDomainAtWatermarkPattern = regexp.MustCompile(`^[^\s@]+\.(?:com|net|org|cc|io|me|xyz|top)@`)
 
 	groupPattern = compile(`[\s._-]([A-Za-z][A-Za-z0-9]{1,19})$`)
 

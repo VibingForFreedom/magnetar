@@ -4,9 +4,36 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
+	"unicode"
 
 	"github.com/magnetar/magnetar/internal/compress"
 )
+
+// sanitizeFTSQuery strips FTS5/boolean-mode special characters and quotes each
+// token so that user input like `m3gan\` or `foo"bar` cannot break the query.
+// Returns an empty string if the input contains no searchable terms.
+func sanitizeFTSQuery(raw string) string {
+	// Strip everything that isn't a letter, digit, or whitespace.
+	cleaned := strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsSpace(r) {
+			return r
+		}
+		return ' '
+	}, raw)
+
+	tokens := strings.Fields(cleaned)
+	if len(tokens) == 0 {
+		return ""
+	}
+
+	// Quote each token to prevent FTS operator interpretation.
+	quoted := make([]string, 0, len(tokens))
+	for _, t := range tokens {
+		quoted = append(quoted, `"`+t+`"`)
+	}
+	return strings.Join(quoted, " ")
+}
 
 func nullString(s string) interface{} {
 	if s == "" {

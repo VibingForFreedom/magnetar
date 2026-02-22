@@ -73,6 +73,8 @@ func extractTitle(name string, p *ParsedName) string {
 	title = siteWatermarkPattern.ReplaceAllString(title, "")
 	// Strip site@prefix@ and site@prefix@content watermarks
 	title = siteAtWatermarkPattern.ReplaceAllString(title, "")
+	// Strip domain.tld@ watermarks: "dccdom.com@"
+	title = siteDomainAtWatermarkPattern.ReplaceAllString(title, "")
 
 	extPattern := regexp.MustCompile(`\.(mkv|mp4|avi|wmv|ts|m2ts)$`)
 	title = extPattern.ReplaceAllString(title, "")

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/magnetar/magnetar/internal/classify"
 	"github.com/magnetar/magnetar/internal/config"
 )
 
@@ -47,8 +48,11 @@ type settingsTracker struct {
 }
 
 type settingsGeneral struct {
-	LogLevel       string `json:"log_level"`
-	AnimeDBEnabled bool   `json:"animedb_enabled"`
+	LogLevel            string `json:"log_level"`
+	AnimeDBEnabled      bool   `json:"animedb_enabled"`
+	FilterAdultPatterns bool   `json:"filter_adult_patterns"`
+	FilterAdultNames    bool   `json:"filter_adult_names"`
+	FilterJunkNames     bool   `json:"filter_junk_names"`
 }
 
 type settingsAPI struct {
@@ -104,8 +108,11 @@ func (s *Server) handleSettingsGet(w http.ResponseWriter) {
 			Timeout:  s.cfg.TrackerTimeout.String(),
 		},
 		General: settingsGeneral{
-			LogLevel:       s.cfg.LogLevel,
-			AnimeDBEnabled: s.cfg.AnimeDBEnabled,
+			LogLevel:            s.cfg.LogLevel,
+			AnimeDBEnabled:      s.cfg.AnimeDBEnabled,
+			FilterAdultPatterns: s.cfg.FilterAdultPatterns,
+			FilterAdultNames:    s.cfg.FilterAdultNames,
+			FilterJunkNames:     s.cfg.FilterJunkNames,
 		},
 		API: settingsAPI{
 			Port:        s.cfg.Port,
@@ -148,6 +155,15 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 	// Notify tracker scraper to reconfigure if tracker key changed
 	if strings.HasPrefix(req.Key, "tracker_") && s.trackerScraper != nil {
 		s.trackerScraper.Reconfigure()
+	}
+
+	// Sync classify filter config when filter keys change
+	if strings.HasPrefix(req.Key, "filter_") {
+		classify.SetFilterConfig(classify.FilterConfig{
+			FilterAdultPatterns: s.cfg.FilterAdultPatterns,
+			FilterAdultNames:    s.cfg.FilterAdultNames,
+			FilterJunkNames:     s.cfg.FilterJunkNames,
+		})
 	}
 
 	requiresRestart := req.Key == config.KeyCrawlWorkers

@@ -414,7 +414,11 @@ func (s *MariaDBStore) SearchByName(ctx context.Context, query string, opts Sear
 		limit = 1000
 	}
 
-	ftsQuery := query + "*"
+	ftsQuery := sanitizeFTSQuery(query)
+	if ftsQuery == "" {
+		return &SearchResult{Total: 0}, nil
+	}
+	ftsQuery += "*"
 
 	countSQL := `SELECT COUNT(*) FROM torrents WHERE MATCH(name) AGAINST(? IN BOOLEAN MODE)`
 	searchSQL := `SELECT ` + torrentSelectColumns + ` FROM torrents WHERE MATCH(name) AGAINST(? IN BOOLEAN MODE)`

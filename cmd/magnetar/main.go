@@ -13,6 +13,7 @@ import (
 
 	"github.com/magnetar/magnetar/internal/animedb"
 	"github.com/magnetar/magnetar/internal/api"
+	"github.com/magnetar/magnetar/internal/classify"
 	"github.com/magnetar/magnetar/internal/config"
 	"github.com/magnetar/magnetar/internal/crawler"
 	"github.com/magnetar/magnetar/internal/matcher"
@@ -136,6 +137,9 @@ func runServe(_ *flag.FlagSet) error { //nolint:unparam
 	if err := cfg.ApplyOverrides(ctx, st); err != nil {
 		logger.Warn("could not apply settings overrides", "error", err)
 	}
+
+	// Sync classify filter config from loaded settings
+	syncFilterConfig(cfg)
 
 	stats, err := st.Stats(ctx)
 	if err != nil {
@@ -377,6 +381,15 @@ func runBackup(args []string) error {
 
 	logger.Info("backup completed successfully", "path", *output)
 	return nil
+}
+
+// syncFilterConfig pushes the config filter toggles into the classify package.
+func syncFilterConfig(cfg *config.Config) {
+	classify.SetFilterConfig(classify.FilterConfig{
+		FilterAdultPatterns: cfg.FilterAdultPatterns,
+		FilterAdultNames:    cfg.FilterAdultNames,
+		FilterJunkNames:     cfg.FilterJunkNames,
+	})
 }
 
 func runDailyPurge(ctx context.Context, st store.Store, registry *tasklog.Registry, logger *slog.Logger) {

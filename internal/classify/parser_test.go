@@ -534,6 +534,8 @@ func TestIsAdult(t *testing.T) {
 		{"JAV code SNIS-070", "SNIS-070", true},
 		{"JAV code CAWD-507", "CAWD-507", true},
 		{"JAV code with suffix", "MIAB-575-C", true},
+		{"JAV code numeric prefix 529STCV-216", "529STCV-216", true},
+		{"JAV code with domain watermark", "dccdom.com@529STCV-216", true},
 		{"Porn studio Brazzers", "Brazzers.21.05.15.Gabbie.Carter.XXX.1080p", true},
 		{"Porn studio RealityKings", "RealityKings - MomsBangTeens - Lucy Tyler", true},
 		{"XXX keyword", "PornWorld.25.09.20.Sladyen.Skaya.XXX.1080p.MP4", true},
@@ -724,6 +726,196 @@ func TestHasMediaFiles(t *testing.T) {
 			got := HasMediaFiles(tt.files)
 			if got != tt.want {
 				t.Errorf("HasMediaFiles() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsAdultName(t *testing.T) {
+	// Inject test data into the package-level maps
+	origPerformers := adultPerformers
+	origStudios := adultStudios
+	origKeywords := adultKeywords
+	defer func() {
+		adultPerformers = origPerformers
+		adultStudios = origStudios
+		adultKeywords = origKeywords
+	}()
+
+	adultPerformers = map[string]bool{
+		"jayden lee":     true,
+		"mia khalifa":    true,
+		"lana rhoades":   true,
+		"riley reid":     true,
+		"johnny sins":    true,
+		"maria ozawa":    true,
+		"asa akira":      true,
+		"sasha grey":     true,
+	}
+	adultStudios = map[string]bool{
+		"evil angel":     true,
+		"bang bros":       true,
+		"wicked pictures": true,
+	}
+	adultKeywords = map[string]bool{
+		"gangbang":   true,
+		"creampie":   true,
+		"bukkake":    true,
+	}
+
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		// Should match — bare performer names (no media signals)
+		{"bare performer name", "Jayden Lee", true},
+		{"performer dotted", "Jayden.Lee", true},
+		{"performer hyphenated", "Mia-Khalifa", true},
+		{"performer in longer title", "Jayden Lee Hardcore Scene", true},
+
+		// Should match — bare studio names
+		{"bare studio name", "Evil Angel", true},
+		{"studio dotted", "Evil.Angel", true},
+
+		// Should match — keywords
+		{"keyword in title", "Amateur Gangbang Collection", true},
+
+		// Should NOT match — has media signals
+		// (isAdultName is only called when !hasMediaSignals, but test the function itself)
+		{"performer name function still matches", "Riley Reid", true},
+
+		// Should NOT match — not in maps
+		{"legit actor name", "John Smith", false},
+		{"random title", "Basketball Championship 2024", false},
+		{"empty string", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isAdultName(tt.input)
+			if got != tt.want {
+				t.Errorf("isAdultName(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsJunkWithAdultNames(t *testing.T) {
+	// Inject test data
+	origPerformers := adultPerformers
+	origStudios := adultStudios
+	origKeywords := adultKeywords
+	origCfg := filterCfg
+	defer func() {
+		adultPerformers = origPerformers
+		adultStudios = origStudios
+		adultKeywords = origKeywords
+		filterCfg = origCfg
+	}()
+
+	adultPerformers = map[string]bool{
+		"jayden lee": true,
+	}
+	adultStudios = map[string]bool{}
+	adultKeywords = map[string]bool{}
+
+	// Ensure all filters enabled
+	SetFilterConfig(DefaultFilterConfig())
+
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		// Bare name → junk (no media signals, matches performer)
+		{"bare performer name is junk", "Jayden Lee", true},
+		// Name with media signals → NOT junk (skips name check)
+		{"performer with media signals passes", "Jayden.Lee.2024.1080p.WEB-DL", false},
+		// TV show with performer name → NOT junk
+		{"TV show passes", "Breaking.Bad.S02E08.1080p", false},
+		// Domain watermark + JAV → junk (caught by adult patterns)
+		{"domain watermark JAV", "dccdom.com@529STCV-216", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := IsJunk(tt.input, nil)
+			if got != tt.want {
+				t.Errorf("IsJunk(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFilterConfigToggles(t *testing.T) {
+	origCfg := filterCfg
+	defer func() { filterCfg = origCfg }()
+
+	// With adult patterns disabled, JAV codes should pass
+	SetFilterConfig(FilterConfig{
+		FilterAdultPatterns: false,
+		FilterAdultNames:    true,
+		FilterJunkNames:     true,
+	})
+	if IsJunk("CAWD-507", nil) {
+		t.Error("expected CAWD-507 to pass when FilterAdultPatterns=false")
+	}
+
+	// With junk names disabled, software patterns should pass
+	SetFilterConfig(FilterConfig{
+		FilterAdultPatterns: true,
+		FilterAdultNames:    true,
+		FilterJunkNames:     false,
+	})
+	if IsJunk("Adobe Photoshop 2024 crack keygen", nil) {
+		t.Error("expected software title to pass when FilterJunkNames=false")
+	}
+
+	// With adult names disabled, bare performer names should pass
+	origPerformers := adultPerformers
+	defer func() { adultPerformers = origPerformers }()
+	adultPerformers = map[string]bool{"jayden lee": true}
+
+	SetFilterConfig(FilterConfig{
+		FilterAdultPatterns: true,
+		FilterAdultNames:    false,
+		FilterJunkNames:     true,
+	})
+	if IsJunk("Jayden Lee", nil) {
+		t.Error("expected bare performer name to pass when FilterAdultNames=false")
+	}
+
+	// Re-enable → should be caught
+	SetFilterConfig(DefaultFilterConfig())
+	if !IsJunk("Jayden Lee", nil) {
+		t.Error("expected bare performer name to be junk when FilterAdultNames=true")
+	}
+}
+
+func TestDomainWatermarkStripping(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantTitle string
+	}{
+		{
+			name:      "domain.com@ watermark stripped",
+			input:     "dccdom.com@Some.Movie.2024.1080p.WEB-DL",
+			wantTitle: "Some Movie",
+		},
+		{
+			name:      "domain.net@ watermark stripped",
+			input:     "tracker.net@Another.Title.2023.720p",
+			wantTitle: "Another Title",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Parse(tt.input)
+			if got.Title != tt.wantTitle {
+				t.Errorf("Title = %q, want %q", got.Title, tt.wantTitle)
 			}
 		})
 	}

@@ -44,7 +44,11 @@ type Config struct {
 
 	AnimeDBEnabled bool
 
-	BackupEnabled  bool
+	FilterAdultPatterns bool
+	FilterAdultNames    bool
+	FilterJunkNames     bool
+
+	BackupEnabled bool
 	BackupPath     string
 	BackupSchedule string
 	BackupRetain   int
@@ -91,6 +95,10 @@ func Load() (*Config, error) {
 		ValkeyURL: getEnvString("MAGNETAR_VALKEY_URL", ""),
 
 		AnimeDBEnabled: getEnvBool("MAGNETAR_ANIMEDB_ENABLED", true),
+
+		FilterAdultPatterns: getEnvBool("MAGNETAR_FILTER_ADULT_PATTERNS", true),
+		FilterAdultNames:    getEnvBool("MAGNETAR_FILTER_ADULT_NAMES", true),
+		FilterJunkNames:     getEnvBool("MAGNETAR_FILTER_JUNK_NAMES", true),
 
 		BackupEnabled:  getEnvBool("MAGNETAR_BACKUP_ENABLED", false),
 		BackupPath:     getEnvString("MAGNETAR_BACKUP_PATH", "/data/backups"),

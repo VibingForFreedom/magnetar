@@ -120,8 +120,11 @@ var (
 
 	// Adult content patterns — JAV codes, porn studios, explicit keywords.
 	adultPatterns = []*regexp.Regexp{
-		// JAV codes: 2-5 uppercase letters followed by hyphen and 3-5 digits, optionally with suffix
-		compile(`(?:^|[\s._\[@])([A-Z]{2,5})-(\d{3,5})(?:-?[A-Z])?(?:[\s._\]@]|$)`),
+		// JAV codes: 2-10 alphanumeric chars followed by hyphen and 3-5 digits, optionally with suffix
+		// Matches both traditional (CAWD-507) and numeric-prefix (529STCV-216) codes
+		compile(`(?:^|[\s._\[@])([A-Z0-9]{2,10})-(\d{3,5})(?:-?[A-Z])?(?:[\s._\]@]|$)`),
+		// JAV codes after domain watermarks: "domain.com@CODE-123"
+		compile(`\.(?:com|net|org|cc|io|me|xyz|top)@([A-Z0-9]{2,10})-(\d{3,5})(?:-?[A-Z])?(?:[\s._\]@]|$)`),
 		// Japanese adult-specific terms (uncensored excluded — used in anime)
 		compile(`(?i)(?:^|[\s._-])(無修正|中出し|潮吹き|痴女|素人|熟女|巨乳|美乳|爆乳|淫乱|変態|近親相姦|人妻)(?:[\s._-]|$)`),
 		// Porn studios / sites
@@ -178,20 +181,29 @@ func IsAdult(name string) bool {
 // It checks both the torrent name and file extensions.
 // This should be called BEFORE Classify to avoid wasting work.
 func IsJunk(name string, files []File) bool {
-	// Adult content detection
-	if IsAdult(name) {
+	// Adult content detection (pattern-based — JAV codes, studios, keywords)
+	if filterCfg.FilterAdultPatterns && IsAdult(name) {
 		return true
 	}
 
 	// Name-based rejection: strong software/game signals
-	for _, p := range junkNamePatterns {
-		if p.MatchString(name) {
-			// Don't reject if the name ALSO has strong media signals
-			if hasMediaSignals(name) {
-				return false
+	if filterCfg.FilterJunkNames {
+		for _, p := range junkNamePatterns {
+			if p.MatchString(name) {
+				// Don't reject if the name ALSO has strong media signals
+				if hasMediaSignals(name) {
+					break
+				}
+				return true
 			}
-			return true
 		}
+	}
+
+	// Adult name detection: only check bare names without media signals.
+	// Legit media like "Jayden.Lee.2024.1080p.WEB-DL" has signals and skips this.
+	// A bare "Jayden Lee" has zero signals and gets checked against performer/studio lists.
+	if filterCfg.FilterAdultNames && !hasMediaSignals(name) && isAdultName(name) {
+		return true
 	}
 
 	// No files to check — can't determine from extensions alone
@@ -264,6 +276,80 @@ func hasMediaSignals(name string) bool {
 		}
 	}
 	return false
+}
+
+// isAdultName checks if a normalized title matches known adult performer names,
+// studio names, or dirty keywords from the generated adult_data.go maps.
+// It should only be called for titles WITHOUT media signals to avoid false positives.
+func isAdultName(name string) bool {
+	normalized := normalizeForAdultCheck(name)
+	if normalized == "" {
+		return false
+	}
+
+	// Check full name against performer map
+	if adultPerformers[normalized] {
+		return true
+	}
+
+	// Check full name against studio map
+	if adultStudios[normalized] {
+		return true
+	}
+
+	// Check each word against keywords
+	words := strings.Fields(normalized)
+	for _, w := range words {
+		if adultKeywords[w] {
+			return true
+		}
+	}
+
+	// Sliding window bigram check against performers
+	// e.g., "Jayden Lee Hardcore" → check "jayden lee", "lee hardcore"
+	if len(words) >= 2 {
+		for i := 0; i < len(words)-1; i++ {
+			bigram := words[i] + " " + words[i+1]
+			if adultPerformers[bigram] {
+				return true
+			}
+		}
+	}
+
+	// Check trigrams for performers with three-word names
+	if len(words) >= 3 {
+		for i := 0; i < len(words)-2; i++ {
+			trigram := words[i] + " " + words[i+1] + " " + words[i+2]
+			if adultPerformers[trigram] {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// normalizeForAdultCheck prepares a torrent name for adult content lookup:
+// lowercase, strip watermarks, collapse separators to spaces, trim.
+func normalizeForAdultCheck(name string) string {
+	// Strip domain watermark prefixes
+	name = siteWatermarkPattern.ReplaceAllString(name, "")
+	name = siteAtWatermarkPattern.ReplaceAllString(name, "")
+	name = siteDomainAtWatermarkPattern.ReplaceAllString(name, "")
+
+	name = strings.ToLower(name)
+
+	// Replace common separators with spaces
+	name = strings.NewReplacer(
+		".", " ",
+		"_", " ",
+		"-", " ",
+		"~", " ",
+	).Replace(name)
+
+	// Collapse whitespace
+	fields := strings.Fields(name)
+	return strings.Join(fields, " ")
 }
 
 func IsAnime(name string) bool {
