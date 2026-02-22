@@ -171,14 +171,19 @@ func mapQuality(q classify.Quality) store.Quality {
 func (c *Crawler) fireTrackerScrapes(ctx context.Context, torrents []*store.Torrent) {
 	for _, t := range torrents {
 		go func(torrent *store.Torrent) {
+			c.metrics.TrackerScrapeAttempts.Add(1)
+			c.metrics.RecordTrackerScrape(1)
+
 			var hash [20]byte
 			copy(hash[:], torrent.InfoHash)
 
 			result := c.trackerScraper.Scrape(ctx, hash)
 			if result.Seeders == 0 && result.Leechers == 0 {
+				c.metrics.TrackerScrapeFailures.Add(1)
 				return
 			}
 
+			c.metrics.TrackerScrapeSuccesses.Add(1)
 			c.updateTrackerCounts(ctx, torrent, result)
 		}(t)
 	}
@@ -204,6 +209,8 @@ func (c *Crawler) updateTrackerCounts(ctx context.Context, torrent *store.Torren
 		existing.UpdatedAt = time.Now().Unix()
 		if err := c.store.UpsertTorrent(ctx, existing); err != nil {
 			c.logger.Error("failed to update tracker counts", "error", err)
+		} else {
+			c.metrics.TrackerScrapeUpdated.Add(1)
 		}
 	}
 }

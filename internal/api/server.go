@@ -15,6 +15,7 @@ import (
 	"github.com/magnetar/magnetar/internal/metrics"
 	"github.com/magnetar/magnetar/internal/store"
 	"github.com/magnetar/magnetar/internal/tasklog"
+	"github.com/magnetar/magnetar/internal/tracker"
 	"github.com/magnetar/magnetar/internal/web"
 )
 
@@ -42,7 +43,7 @@ type Server struct {
 	crawler        Pausable
 	matcher        Pausable
 	matcherTrigger Triggerable
-	trackerScraper Reconfigurable
+	trackerScraper *tracker.Scraper
 	taskRegistry   *tasklog.Registry
 	start          time.Time
 	logger         *log.Logger
@@ -73,8 +74,8 @@ func (s *Server) SetMatcherTrigger(t Triggerable) {
 	s.matcherTrigger = t
 }
 
-// SetTrackerScraper sets the tracker scraper reference for runtime reconfiguration.
-func (s *Server) SetTrackerScraper(t Reconfigurable) {
+// SetTrackerScraper sets the tracker scraper reference for runtime reconfiguration and on-demand scrapes.
+func (s *Server) SetTrackerScraper(t *tracker.Scraper) {
 	s.trackerScraper = t
 }
 
@@ -104,6 +105,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/matcher/recent", s.handleMatcherRecent)
 	mux.HandleFunc("/api/matcher/failures", s.handleMatcherFailures)
 	mux.HandleFunc("/api/matcher/trigger", s.handleMatcherTrigger)
+	mux.HandleFunc("/api/tracker/scrape", s.handleTrackerScrape)
 	mux.Handle("/", web.Handler())
 
 	return s.withLogging(s.withAuth(mux))
