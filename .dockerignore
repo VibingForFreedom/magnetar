@@ -1,0 +1,14 @@
+.git
+.env
+*.db
+*.db-wal
+*.db-shm
+data/
+logs/
+third_party/
+node_modules/
+frontend/node_modules/
+frontend/.svelte-kit/
+.idea/
+.vscode/
+magnetar-plan*.md

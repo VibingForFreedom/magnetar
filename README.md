@@ -29,7 +29,7 @@ cp .env.example .env
 ./magnetar serve
 ```
 
-The web UI will be at `http://localhost:8080`.
+The web UI will be at `http://localhost:3333`.
 
 ### Docker
 
@@ -38,7 +38,7 @@ services:
   magnetar:
     image: ghcr.io/vibingforfreedom/magnetar:latest
     ports:
-      - "8080:8080"
+      - "3333:3333"
       - "6881:6881/udp"
     volumes:
       - ./data:/data
@@ -54,7 +54,7 @@ All configuration is via environment variables (or a `.env` file):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MAGNETAR_PORT` | `8080` | HTTP server port |
+| `MAGNETAR_PORT` | `3333` | HTTP server port |
 | `MAGNETAR_DB_BACKEND` | `sqlite` | `sqlite` or `mariadb` |
 | `MAGNETAR_DB_PATH` | `data/magnetar.db` | SQLite database path |
 | `MAGNETAR_CRAWL_ENABLED` | `true` | Enable DHT crawler |
@@ -69,7 +69,7 @@ See `.env.example` for the full list.
 
 Add Magnetar as an indexer in Prowlarr (or directly in Sonarr/Radarr):
 
-- **URL**: `http://your-server:8080/api/torznab`
+- **URL**: `http://your-server:3333/api/torznab`
 - **API Key**: whatever you set in `MAGNETAR_API_KEY` (leave blank if none)
 - **Categories**: Movies (2000), TV (5000), Anime (5070)
 

@@ -34,6 +34,6 @@
 	</nav>
 
 	<div class="border-t border-border px-5 py-3">
-		<span class="text-xs text-text-secondary">v0.1.0-dev</span>
+		<span class="text-xs text-text-secondary">v0.1.0-beta.1</span>
 	</div>
 </aside>
