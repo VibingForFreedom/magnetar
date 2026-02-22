@@ -46,13 +46,13 @@ func TestTitleIndex_Lookup(t *testing.T) {
 		AniListID: 1535,
 		Title:     "Death Note",
 		Year:      2006,
-	}, []string{"Death Note", "DN", "DEATH NOTE"})
+	}, []string{"Death Note", "DEATH NOTE"})
 
 	idx.addEntry(AnimeEntry{
 		AniListID: 16498,
 		Title:     "Attack on Titan",
 		Year:      2013,
-	}, []string{"Attack on Titan", "Shingeki no Kyojin", "AoT"})
+	}, []string{"Attack on Titan", "Shingeki no Kyojin"})
 
 	idx.addEntry(AnimeEntry{
 		AniListID: 20,
@@ -128,6 +128,36 @@ func TestTitleIndex_Lookup(t *testing.T) {
 			t.Errorf("got Len %d, want 3", idx.Len())
 		}
 	})
+}
+
+func TestTitleIndex_ShortTitleFiltering(t *testing.T) {
+	idx := newTitleIndex()
+
+	// "Far" is a real anime but too short to index — causes false positives
+	idx.addEntry(AnimeEntry{AniListID: 99, Title: "Far", Year: 1998}, []string{"Far"})
+	// "Air" is another short title
+	idx.addEntry(AnimeEntry{AniListID: 100, Title: "Air", Year: 2005}, []string{"Air"})
+	// "Nana" (4 chars) should be indexed
+	idx.addEntry(AnimeEntry{AniListID: 101, Title: "Nana", Year: 2006}, []string{"Nana"})
+
+	if idx.Contains("Far") {
+		t.Error("single-word title 'Far' (3 chars) should not be indexed")
+	}
+	if idx.Contains("Air") {
+		t.Error("single-word title 'Air' (3 chars) should not be indexed")
+	}
+	if !idx.Contains("Nana") {
+		t.Error("single-word title 'Nana' (4 chars) should be indexed")
+	}
+
+	// "Far Cry 5" must NOT match "Far" via tail trimming
+	if idx.Contains("Far Cry 5") {
+		t.Error("'Far Cry 5' should not match anime 'Far' via tail trimming")
+	}
+	// "Far Cry" must NOT match "Far" via tail trimming
+	if idx.Contains("Far Cry") {
+		t.Error("'Far Cry' should not match anime 'Far' via tail trimming")
+	}
 }
 
 func TestTitleIndex_DuplicateNormalized(t *testing.T) {

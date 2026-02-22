@@ -19,8 +19,20 @@ func newTitleIndex() *TitleIndex {
 	}
 }
 
+// minSingleWordIndexLen is the minimum character length for a single-word title
+// to be indexed. Very short single words like "far", "air", "run" are too
+// ambiguous and cause false positive reclassification of non-anime content.
+const minSingleWordIndexLen = 4
+
+// minSingleWordTrimLen is the stricter minimum for tail-trimmed lookups.
+// When trimming "far cry 5" -> "far cry" -> "far", the trimmed single-word
+// result must be at least this long to be checked against the index.
+const minSingleWordTrimLen = 8
+
 // addEntry adds an anime entry with its titles to the index.
 // Duplicate normalized titles are ignored (first entry wins).
+// Single-word titles shorter than minSingleWordIndexLen are skipped to avoid
+// false positives from common short words.
 func (idx *TitleIndex) addEntry(entry AnimeEntry, titles []string) {
 	idx.entries = append(idx.entries, entry)
 	ptr := &idx.entries[len(idx.entries)-1]
@@ -28,6 +40,9 @@ func (idx *TitleIndex) addEntry(entry AnimeEntry, titles []string) {
 	for _, t := range titles {
 		norm := normalizeTitle(t)
 		if norm == "" {
+			continue
+		}
+		if !strings.Contains(norm, " ") && len(norm) < minSingleWordIndexLen {
 			continue
 		}
 		if _, exists := idx.exact[norm]; !exists {
@@ -52,7 +67,9 @@ func (idx *TitleIndex) Lookup(title string) *AnimeEntry {
 		return entry
 	}
 
-	// Progressive tail trimming: remove last word up to 3 times
+	// Progressive tail trimming: remove last word up to 3 times.
+	// The trimmed result must still contain at least 2 words to avoid
+	// matching overly generic single-word titles (e.g. "far cry 5" -> "far").
 	trimmed := norm
 	for i := 0; i < 3; i++ {
 		lastSpace := strings.LastIndex(trimmed, " ")
@@ -60,6 +77,9 @@ func (idx *TitleIndex) Lookup(title string) *AnimeEntry {
 			break
 		}
 		trimmed = trimmed[:lastSpace]
+		if !strings.Contains(trimmed, " ") && len(trimmed) < minSingleWordTrimLen {
+			break
+		}
 		if entry, ok := idx.exact[trimmed]; ok {
 			return entry
 		}
