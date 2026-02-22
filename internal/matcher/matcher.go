@@ -238,6 +238,22 @@ func (m *Matcher) processWithWorkers(ctx context.Context, torrents []*store.Torr
 				default:
 				}
 
+				// Skip adult/junk content — mark as failed with far-future backoff
+				if classify.IsJunk(t.Name, nil) {
+					result := store.MatchResult{
+						Status:     store.MatchFailed,
+						MatchAfter: time.Now().Add(876000 * time.Hour).Unix(), // ~100 years
+					}
+					if err := m.store.UpdateMatchResult(ctx, t.InfoHash, result); err != nil {
+						m.logger.Error("updating junk match result",
+							"info_hash", t.InfoHashHex(),
+							"error", err,
+						)
+					}
+					m.metrics.MatchFailures.Add(1)
+					continue
+				}
+
 				m.metrics.MatchAttempts.Add(1)
 				result := m.matchOne(ctx, t)
 				if result.Status == store.MatchMatched {
