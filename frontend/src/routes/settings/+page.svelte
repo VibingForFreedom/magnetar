@@ -97,13 +97,6 @@
 		</div>
 	{:else}
 		<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-			<SettingsSection title="Database">
-				<SettingsRow label="Backend" value={settings.database.backend} />
-				{#if settings.database.path}
-					<SettingsRow label="Path" value={settings.database.path} />
-				{/if}
-			</SettingsSection>
-
 			<SettingsSection title="Crawler">
 				<SettingsRow label="Enabled" value={settings.crawler.enabled} />
 				{#if settings.crawler.enabled}

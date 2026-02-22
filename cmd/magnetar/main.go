@@ -18,6 +18,7 @@ import (
 	"github.com/magnetar/magnetar/internal/matcher"
 	"github.com/magnetar/magnetar/internal/metrics"
 	"github.com/magnetar/magnetar/internal/store"
+	"github.com/magnetar/magnetar/internal/tasklog"
 	"github.com/magnetar/magnetar/internal/tracker"
 )
 
@@ -149,9 +150,36 @@ func runServe(_ *flag.FlagSet) error { //nolint:unparam
 		)
 	}
 
+	// Create task registry for scheduled task tracking
+	registry := tasklog.New()
+
+	// Register known tasks based on backend
+	if cfg.IsSQLite() {
+		registry.Register("WAL Checkpoint", "5m")
+		if cfg.IntegrityCheckDaily {
+			registry.Register("Integrity Check", "24h")
+		}
+	}
+	if cfg.AnalyzeInterval > 0 {
+		registry.Register("ANALYZE", "on insert threshold")
+	} else if cfg.IsMariaDB() {
+		registry.Register("ANALYZE", "1h")
+	}
+	registry.Register("Rejected Hash Purge", "24h")
+	registry.Register("Junk Torrent Purge", "24h")
+
+	// Wire registry to store
+	switch s := st.(type) {
+	case *store.SQLiteStore:
+		s.SetTaskRegistry(registry)
+	case *store.MariaDBStore:
+		s.SetTaskRegistry(registry)
+	}
+
 	m := metrics.New()
 
 	apiServer := api.NewServer(st, cfg, m)
+	apiServer.SetTaskRegistry(registry)
 
 	httpServer := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Port),
@@ -206,7 +234,9 @@ func runServe(_ *flag.FlagSet) error { //nolint:unparam
 	// Start anime offline database if enabled
 	var adb *animedb.AnimeDB
 	if cfg.AnimeDBEnabled {
+		registry.Register("Anime DB Refresh", "24h")
 		adb = animedb.New(logger)
+		adb.SetTaskRegistry(registry)
 		if err := adb.Load(ctx); err != nil {
 			logger.Warn("anime DB initial load failed, will retry", "error", err)
 		}
@@ -214,7 +244,7 @@ func runServe(_ *flag.FlagSet) error { //nolint:unparam
 	}
 
 	// Start daily purge goroutine for rejected hashes and legacy junk
-	go runDailyPurge(ctx, st, logger)
+	go runDailyPurge(ctx, st, registry, logger)
 
 	// Start metadata matcher if enabled
 	var metaMatcher *matcher.Matcher
@@ -349,7 +379,7 @@ func runBackup(args []string) error {
 	return nil
 }
 
-func runDailyPurge(ctx context.Context, st store.Store, logger *slog.Logger) {
+func runDailyPurge(ctx context.Context, st store.Store, registry *tasklog.Registry, logger *slog.Logger) {
 	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
 
@@ -366,6 +396,7 @@ func runDailyPurge(ctx context.Context, st store.Store, logger *slog.Logger) {
 			} else if purged > 0 {
 				logger.Info("purged expired rejected hashes", "count", purged)
 			}
+			registry.Record("Rejected Hash Purge", fmt.Sprintf("Purged %d", purged), err)
 
 			junkPurged, err := st.PurgeJunkTorrents(purgeCtx)
 			if err != nil {
@@ -373,6 +404,7 @@ func runDailyPurge(ctx context.Context, st store.Store, logger *slog.Logger) {
 			} else if junkPurged > 0 {
 				logger.Info("purged legacy junk torrents", "count", junkPurged)
 			}
+			registry.Record("Junk Torrent Purge", fmt.Sprintf("Purged %d", junkPurged), err)
 
 			cancel()
 		}

@@ -14,6 +14,7 @@ import (
 	"github.com/magnetar/magnetar/internal/config"
 	"github.com/magnetar/magnetar/internal/metrics"
 	"github.com/magnetar/magnetar/internal/store"
+	"github.com/magnetar/magnetar/internal/tasklog"
 	"github.com/magnetar/magnetar/internal/web"
 )
 
@@ -42,6 +43,7 @@ type Server struct {
 	matcher        Pausable
 	matcherTrigger Triggerable
 	trackerScraper Reconfigurable
+	taskRegistry   *tasklog.Registry
 	start          time.Time
 	logger         *log.Logger
 }
@@ -76,11 +78,17 @@ func (s *Server) SetTrackerScraper(t Reconfigurable) {
 	s.trackerScraper = t
 }
 
+// SetTaskRegistry sets the task registry for the /api/system endpoint.
+func (s *Server) SetTaskRegistry(r *tasklog.Registry) {
+	s.taskRegistry = r
+}
+
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/api/stats", s.handleStats)
+	mux.HandleFunc("/api/system", s.handleSystem)
 	mux.HandleFunc("/api/events", s.handleSSE)
 	mux.HandleFunc("/api/search", s.handleSearch)
 	mux.HandleFunc("/api/settings", s.handleSettings)

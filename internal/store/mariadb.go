@@ -10,16 +10,23 @@ import (
 	"time"
 
 	"github.com/magnetar/magnetar/internal/config"
+	"github.com/magnetar/magnetar/internal/tasklog"
 
 	_ "github.com/go-sql-driver/mysql"
 )
 
 // MariaDBStore implements Store using MariaDB as the backend.
 type MariaDBStore struct {
-	db          *sql.DB
-	cfg         *config.Config
-	insertCount atomic.Int64
-	closed      atomic.Bool
+	db           *sql.DB
+	cfg          *config.Config
+	insertCount  atomic.Int64
+	closed       atomic.Bool
+	taskRegistry *tasklog.Registry
+}
+
+// SetTaskRegistry sets the task registry for reporting maintenance task status.
+func (s *MariaDBStore) SetTaskRegistry(r *tasklog.Registry) {
+	s.taskRegistry = r
 }
 
 // NewMariaDBStore creates a new MariaDB-backed store.
@@ -840,6 +847,14 @@ func (s *MariaDBStore) AreRejected(ctx context.Context, hashes [][]byte) (map[[2
 	return result, nil
 }
 
+func (s *MariaDBStore) RejectedHashCount(ctx context.Context) (int64, error) {
+	var count int64
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM rejected_hashes").Scan(&count); err != nil {
+		return 0, fmt.Errorf("counting rejected hashes: %w", err)
+	}
+	return count, nil
+}
+
 func (s *MariaDBStore) PurgeOldRejected(ctx context.Context, olderThan time.Duration) (int64, error) {
 	cutoff := time.Now().Add(-olderThan).Unix()
 	result, err := s.db.ExecContext(ctx, `DELETE FROM rejected_hashes WHERE rejected_at < ?`, cutoff)
@@ -888,8 +903,13 @@ func (s *MariaDBStore) incrementInsertCount() {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()
-			if err := s.Analyze(ctx); err != nil {
-				_ = err // best-effort background analyze
+			err := s.Analyze(ctx)
+			if s.taskRegistry != nil {
+				result := "OK"
+				if err != nil {
+					result = err.Error()
+				}
+				s.taskRegistry.Record("ANALYZE", result, err)
 			}
 		}()
 	}
@@ -904,8 +924,13 @@ func (s *MariaDBStore) maintenanceLoop() {
 			return
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-		if err := s.Analyze(ctx); err != nil {
-			_ = err // best-effort background analyze
+		err := s.Analyze(ctx)
+		if s.taskRegistry != nil {
+			result := "OK"
+			if err != nil {
+				result = err.Error()
+			}
+			s.taskRegistry.Record("ANALYZE", result, err)
 		}
 		cancel()
 	}

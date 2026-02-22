@@ -382,6 +382,7 @@ type Store interface {
 	GetAllSettings(ctx context.Context) (map[string]string, error)
 	RejectHashes(ctx context.Context, hashes [][]byte) error
 	AreRejected(ctx context.Context, hashes [][]byte) (map[[20]byte]bool, error)
+	RejectedHashCount(ctx context.Context) (int64, error)
 	PurgeOldRejected(ctx context.Context, olderThan time.Duration) (int64, error)
 	PurgeJunkTorrents(ctx context.Context) (int64, error)
 	Migrate(ctx context.Context) error

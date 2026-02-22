@@ -2,9 +2,12 @@ package animedb
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync/atomic"
 	"time"
+
+	"github.com/magnetar/magnetar/internal/tasklog"
 )
 
 const refreshInterval = 24 * time.Hour
@@ -12,9 +15,15 @@ const refreshInterval = 24 * time.Hour
 // AnimeDB provides offline anime title lookup using data from
 // manami-project/anime-offline-database and AniDB title dumps.
 type AnimeDB struct {
-	index  atomic.Pointer[TitleIndex]
-	logger *slog.Logger
-	loaded atomic.Bool
+	index        atomic.Pointer[TitleIndex]
+	logger       *slog.Logger
+	loaded       atomic.Bool
+	taskRegistry *tasklog.Registry
+}
+
+// SetTaskRegistry sets the task registry for reporting refresh status.
+func (db *AnimeDB) SetTaskRegistry(r *tasklog.Registry) {
+	db.taskRegistry = r
 }
 
 // New creates a new AnimeDB instance.
@@ -78,9 +87,11 @@ func (db *AnimeDB) Load(ctx context.Context) error {
 // Start begins a background goroutine that refreshes the database daily.
 // It calls Load immediately, then refreshes every 24 hours.
 func (db *AnimeDB) Start(ctx context.Context) {
-	if err := db.Load(ctx); err != nil {
+	err := db.Load(ctx)
+	if err != nil {
 		db.logger.Error("initial anime db load failed", "error", err)
 	}
+	db.recordTaskResult(err)
 
 	ticker := time.NewTicker(refreshInterval)
 	defer ticker.Stop()
@@ -90,11 +101,25 @@ func (db *AnimeDB) Start(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := db.Load(ctx); err != nil {
+			err := db.Load(ctx)
+			if err != nil {
 				db.logger.Error("anime db refresh failed", "error", err)
 			}
+			db.recordTaskResult(err)
 		}
 	}
+}
+
+func (db *AnimeDB) recordTaskResult(err error) {
+	if db.taskRegistry == nil {
+		return
+	}
+	if err != nil {
+		db.taskRegistry.Record("Anime DB Refresh", err.Error(), err)
+		return
+	}
+	result := fmt.Sprintf("Loaded %d titles", db.EntryCount())
+	db.taskRegistry.Record("Anime DB Refresh", result, nil)
 }
 
 // Lookup searches for an anime by title and returns the matching entry or nil.

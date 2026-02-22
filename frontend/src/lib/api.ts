@@ -64,11 +64,36 @@ export interface LatestParams {
 	quality?: number;
 }
 
-export interface Settings {
+export interface TaskEntry {
+	name: string;
+	interval: string;
+	last_run: number;
+	next_run: number;
+	last_result: string;
+	last_error: boolean;
+}
+
+export interface SystemInfo {
 	database: {
 		backend: string;
 		path?: string;
+		size: number;
 	};
+	total_torrents: number;
+	unmatched: number;
+	matched: number;
+	failed: number;
+	rejected_hashes_count: number;
+	process: {
+		uptime: number;
+		start_time: string;
+		go_version: string;
+		os_arch: string;
+	};
+	tasks: TaskEntry[];
+}
+
+export interface Settings {
 	crawler: {
 		enabled: boolean;
 		paused: boolean;
@@ -154,6 +179,10 @@ async function postJSON<T>(url: string, body: unknown): Promise<T> {
 
 export async function fetchStats(): Promise<Stats> {
 	return fetchJSON('/api/stats');
+}
+
+export async function fetchSystemInfo(): Promise<SystemInfo> {
+	return fetchJSON('/api/system');
 }
 
 export async function search(params: SearchParams): Promise<SearchResponse> {
