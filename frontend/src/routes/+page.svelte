@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { metrics, rateHistory, metadataRateHistory, matchRateHistory } from '$lib/stores/metrics';
+	import { metrics, rateHistory, metadataRateHistory, matchRateHistory, trackerScrapeRateHistory } from '$lib/stores/metrics';
 	import { fetchStats, type Stats } from '$lib/api';
 	import { formatNumber, formatRate, formatUptime, formatBytes } from '$lib/utils';
 	import StatCard from '$lib/components/StatCard.svelte';
 	import RateGraph from '$lib/components/RateGraph.svelte';
-	import { Database, Radio, Zap, Target, Clock, HardDrive } from 'lucide-svelte';
+	import { Database, Radio, Zap, Target, Clock, HardDrive, Radar } from 'lucide-svelte';
 	import { onMount } from 'svelte';
 
 	let stats = $state<Stats | null>(null);
@@ -54,6 +54,13 @@
 			color="text-accent-purple"
 		/>
 		<StatCard
+			label="Tracker Scrape"
+			value={$metrics ? formatRate($metrics.tracker_scrape_rate) : '--'}
+			subtitle={$metrics ? `${formatNumber($metrics.tracker_scrape_successes)} / ${formatNumber($metrics.tracker_scrape_attempts)} attempts` : undefined}
+			icon={Radar}
+			color="text-accent-red"
+		/>
+		<StatCard
 			label="DHT Nodes"
 			value={$metrics ? formatNumber($metrics.dht_nodes_visited) : '--'}
 			subtitle={$metrics ? `${formatNumber($metrics.dht_info_hashes_recv)} hashes` : undefined}
@@ -69,7 +76,7 @@
 		/>
 	</div>
 
-	<div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
+	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
 		<div class="rounded-lg border border-border bg-bg-secondary p-4">
 			<div class="mb-2 text-xs font-medium uppercase tracking-wider text-text-secondary">Discovery Rate (60s)</div>
 			<RateGraph data={$rateHistory} color="#6ba38a" height={48} />
@@ -81,6 +88,10 @@
 		<div class="rounded-lg border border-border bg-bg-secondary p-4">
 			<div class="mb-2 text-xs font-medium uppercase tracking-wider text-text-secondary">Match Rate (60s)</div>
 			<RateGraph data={$matchRateHistory} color="#8a6baf" height={48} />
+		</div>
+		<div class="rounded-lg border border-border bg-bg-secondary p-4">
+			<div class="mb-2 text-xs font-medium uppercase tracking-wider text-text-secondary">Tracker Scrape Rate (60s)</div>
+			<RateGraph data={$trackerScrapeRateHistory} color="#af6b6b" height={48} />
 		</div>
 	</div>
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { fetchSettings, toggleCrawler, toggleMatcher, type Settings } from '$lib/api';
+	import { fetchSettings, toggleCrawler, toggleMatcher, triggerTrackerScrape, type Settings, type ScrapeResponse } from '$lib/api';
 	import SettingsSection from '$lib/components/SettingsSection.svelte';
 	import SettingsRow from '$lib/components/SettingsRow.svelte';
 	import SettingsEditRow from '$lib/components/SettingsEditRow.svelte';
@@ -10,6 +10,8 @@
 	let error = $state<string | null>(null);
 	let crawlerToggling = $state(false);
 	let matcherToggling = $state(false);
+	let scraping = $state(false);
+	let scrapeResult = $state<ScrapeResponse | null>(null);
 
 	onMount(async () => {
 		try {
@@ -42,6 +44,19 @@
 			error = err instanceof Error ? err.message : 'Failed to toggle matcher';
 		} finally {
 			matcherToggling = false;
+		}
+	}
+
+	async function onTriggerScrape() {
+		if (scraping) return;
+		scraping = true;
+		scrapeResult = null;
+		try {
+			scrapeResult = await triggerTrackerScrape(50);
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Failed to trigger scrape';
+		} finally {
+			scraping = false;
 		}
 	}
 
@@ -216,6 +231,27 @@
 					type="text"
 					onUpdate={onSettingUpdate('tracker', 'timeout')}
 				/>
+				<div class="flex items-center justify-between px-4 py-2.5">
+					<span class="text-sm text-text-secondary">Trigger Scrape</span>
+					<div class="flex items-center gap-3">
+						{#if scrapeResult}
+							<span class="text-xs text-text-secondary">
+								{scrapeResult.scraped} scraped / {scrapeResult.updated} updated / {scrapeResult.failed} failed in {scrapeResult.elapsed}
+							</span>
+						{/if}
+						<button
+							onclick={onTriggerScrape}
+							disabled={scraping}
+							class="rounded-md bg-accent-blue/15 px-3 py-1.5 text-xs font-medium text-accent-blue transition-colors hover:bg-accent-blue/25 disabled:opacity-50"
+						>
+							{#if scraping}
+								<Loader2 class="h-3 w-3 animate-spin" />
+							{:else}
+								Scrape Now
+							{/if}
+						</button>
+					</div>
+				</div>
 			</SettingsSection>
 
 			<SettingsSection title="General">

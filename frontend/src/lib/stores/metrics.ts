@@ -5,6 +5,7 @@ export const metrics = writable<MetricsSnapshot | null>(null);
 export const rateHistory = writable<number[]>([]);
 export const metadataRateHistory = writable<number[]>([]);
 export const matchRateHistory = writable<number[]>([]);
+export const trackerScrapeRateHistory = writable<number[]>([]);
 
 let eventSource: EventSource | null = null;
 
@@ -16,6 +17,7 @@ export function initMetricsStream() {
 		rateHistory.update((h) => [...h.slice(-59), snap.discovery_rate]);
 		metadataRateHistory.update((h) => [...h.slice(-59), snap.metadata_rate]);
 		matchRateHistory.update((h) => [...h.slice(-59), snap.match_rate]);
+		trackerScrapeRateHistory.update((h) => [...h.slice(-59), snap.tracker_scrape_rate]);
 	});
 }
 

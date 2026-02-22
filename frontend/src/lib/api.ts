@@ -13,6 +13,11 @@ export interface MetricsSnapshot {
 	discovery_rate: number;
 	metadata_rate: number;
 	match_rate: number;
+	tracker_scrape_attempts: number;
+	tracker_scrape_successes: number;
+	tracker_scrape_failures: number;
+	tracker_scrape_updated: number;
+	tracker_scrape_rate: number;
 	uptime_seconds: number;
 }
 
@@ -246,6 +251,18 @@ export async function triggerMatcher(): Promise<{ triggered: boolean; batch_size
 
 export async function rematch(): Promise<{ reset: number }> {
 	return postJSON('/api/matcher/rematch', {});
+}
+
+export interface ScrapeResponse {
+	scraped: number;
+	updated: number;
+	failed: number;
+	elapsed: string;
+}
+
+export async function triggerTrackerScrape(limit?: number): Promise<ScrapeResponse> {
+	const query = limit ? `?limit=${limit}` : '';
+	return postJSON(`/api/tracker/scrape${query}`, {});
 }
 
 export function connectSSE(onMessage: (snap: MetricsSnapshot) => void): EventSource {
