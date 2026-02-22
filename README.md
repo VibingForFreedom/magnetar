@@ -99,6 +99,8 @@ Magnetar wouldn't exist without these projects:
 - **[go-sql-driver/mysql](https://github.com/go-sql-driver/mysql)** — MariaDB/MySQL driver
 - **[SvelteKit](https://kit.svelte.dev/)** + **[Tailwind CSS](https://tailwindcss.com/)** + **[Lucide](https://lucide.dev/)** — the web frontend
 - **[TMDB](https://www.themoviedb.org/)** — movie and TV metadata (this product uses the TMDB API but is not endorsed or certified by TMDB)
+- **[anime-offline-database](https://github.com/manami-project/anime-offline-database)** — comprehensive offline anime dataset with 40K+ entries and cross-references to AniList, Kitsu, MAL, and AniDB
+- **[AniDB](https://anidb.net/)** — additional anime title variants and translations via their title dump API
 
 ## License
 
