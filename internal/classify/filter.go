@@ -54,26 +54,6 @@ var (
 		".ogv":  true,
 	}
 
-	// Files that commonly accompany media and should NOT count as junk.
-	// These are harmless metadata, subtitles, cover art, etc.
-	allowedExts = map[string]bool{
-		// Subtitles
-		".srt": true, ".sub": true, ".ass": true, ".ssa": true,
-		".idx": true, ".sup": true, ".vtt": true,
-		// Metadata
-		".nfo": true, ".txt": true, ".sfv": true,
-		// Cover art / images
-		".jpg": true, ".jpeg": true, ".png": true, ".bmp": true,
-		// Audio (soundtrack, audio tracks)
-		".mp3": true, ".flac": true, ".aac": true, ".ac3": true,
-		".dts": true, ".ogg": true, ".wav": true, ".m4a": true,
-		".wma": true, ".opus": true, ".eac3": true,
-		// Disc structures
-		".ifo": true, ".bup": true,
-		// Samples
-		".sample": true,
-	}
-
 	// Extensions that are strong signals the torrent is NOT media.
 	// If these dominate by size, we reject the torrent.
 	junkExts = map[string]bool{
@@ -116,6 +96,10 @@ var (
 		compile(`(?i)(windows|win7|win10|win11|macos|linux)[\s._-]`),
 		compile(`(?i)[\s._-](nulled|cracked|warez|scene)[\s._-]`),
 		compile(`(?i)(adobe|autodesk|microsoft|office)\s+(20\d{2}|cs\d|cc)`),
+		// Music audio formats / bitrates
+		compile(`(?i)(?:^|[\s._\[-])(FLAC|MP3|320kbps|V0|CBR|VBR|WEB-FLAC|Lossless|Hi-?Res|24bit|16bit|44\.1kHz|48kHz|96kHz|192kHz)(?:[\s._\]-]|$)`),
+		// Music release types
+		compile(`(?i)(?:^|[\s._\[-])(Discography|Discografia|Mixtape|Greatest\.?Hits|Best\.?Of|Live\.?Album)(?:[\s._\]-]|$)`),
 	}
 
 	// Adult content patterns — JAV codes, porn studios, explicit keywords.
@@ -128,13 +112,22 @@ var (
 		// Japanese adult-specific terms (uncensored excluded — used in anime)
 		compile(`(?i)(?:^|[\s._-])(無修正|中出し|潮吹き|痴女|素人|熟女|巨乳|美乳|爆乳|淫乱|変態|近親相姦|人妻)(?:[\s._-]|$)`),
 		// Porn studios / sites
-		compile(`(?i)(?:^|[\s._-])(Brazzers|BangBros|RealityKings|Nubiles|MetArt|Hegre|FakeTaxi|Blacked|Tushy|Vixen|Deeper|AllGirlMassage|MomsBangTeens|BadDaddyPOV|PornFidelity|SexMex|NewSensations|LegalPorno|PornWorld|WhenGirlsPlay|DigitalPlayground|NaughtyAmerica|Babes\.com|MoFos|TeamSkeet|Perv|FTVGirls|Karups|ATKGirlfriends|GirlsWay|HardX|EvilAngel|JulesJordan|Milfy|FiLF|PublicPickups|OldGoesYoung|FacialAbuse|WhiteTeensBlackCocks|MuchaSexo|PrivateSociety|ALSScan|OnlyFans)[\s._-]`),
+		compile(`(?i)(?:^|[\s._\[-])(Brazzers|BangBros|RealityKings|Nubiles|MetArt|Hegre|FakeTaxi|Blacked|Tushy|Vixen|Deeper|AllGirlMassage|MomsBangTeens|BadDaddyPOV|PornFidelity|SexMex|NewSensations|LegalPorno|PornWorld|WhenGirlsPlay|DigitalPlayground|NaughtyAmerica|Babes\.com|MoFos|TeamSkeet|Perv|FTVGirls|Karups|ATKGirlfriends|GirlsWay|HardX|EvilAngel|JulesJordan|Milfy|FiLF|PublicPickups|OldGoesYoung|FacialAbuse|WhiteTeensBlackCocks|MuchaSexo|PrivateSociety|ALSScan|OnlyFans|DontBreakMe|Mofos|PropertySex|FakeHub|Nubile[s]?Films|DadCrush|SisLovesMe|MyFamilyPies|PureTaboo|Vixenplus|Slayed|Twistys|PassionHD|FantasyHD|CastingCouch|ExploitedCollegeGirls|GloryholeSwallow|SpankBang|Caribbeancom|1Pondo|Heyzo|TokyoHot|Pacopacomama|10Musume|Kin8tengoku|PornPros|DaneJones|SexArt|AllFineGirls|PureMature|Lubed|Holed|Tiny4K|GirlsDoPorn|Playboy|Penthouse|DigitalDesire|Scoreland|DDFNetwork|AnalVids|GonzoXXX|ManuelFerrara|Dorcel|Private\.com|Wicked|SweetSinner|MissaX|FamilyStrokes|StepSiblings|BrattySis)[\s._\]-]`),
+		// FC2-PPV codes (Japanese amateur adult pay-per-view)
+		compile(`(?i)(?:^|[\s._-])FC2[-_]?PPV[-_]?\d{5,}`),
+		// JAV codes with quality prefix: "[FHD]CAWD-507", "[HD]ABW-123"
+		// Placed outside anime-skip range since [FHD]+JAV code is unambiguous
+		compile(`\[(?:FHD|HD|SD|4K|UHD)\]\s*([A-Z0-9]{2,10})-(\d{3,5})`),
 		// Explicit content keywords
-		compile(`(?i)(?:^|[\s._-])(XXX|porn|hentai|jav|erotic[ao]?|gangbang|creampie|blowjob|handjob|deepthroat|bukkake|BDSM|femdom|cuckold|futanari|ahegao|orgasm|masturbat|dildo|vibrator|anal\.?sex|oral\.?sex)(?:[\s._-]|$)`),
+		compile(`(?i)(?:^|[\s._-])(XXX|porn|hentai|jav|erotic[ao]?|gangbang|creampie|blowjob|handjob|deepthroat|bukkake|BDSM|femdom|cuckold|futanari|ahegao|orgasm|masturbat|dildo|vibrator|anal\.?sex|oral\.?sex|squirt(?:ing)?|cumshot|threesome|foursome|double.?penetration|ass.?fuck|face.?fuck|tit.?fuck|rough.?sex|interracial|hotwife|swinger)(?:[\s._-]|$)`),
 		// Chinese/Japanese adult indicators
-		compile(`(?:骚|淫|肏|屄|鸡巴|阴茎|阴道|做爱|口交|肛交|中出|颜射|潮吹|痴女|素人|熟女|巨乳|爆乳|无码|有码|抽插|啪啪|约炮|嫩穴|荡妇|淫妻|绿帽)`),
-		// Adult site watermarks
-		compile(`(?i)(?:sex8\.cc|91porn|pornhub|xvideos|xhamster|xnxx|javbus|javlib|avgle|18p2p|hjd2048|69av|theporn|selang|色狼网|性吧)`),
+		compile(`(?:骚|淫|肏|屄|鸡巴|阴茎|阴道|做爱|口交|肛交|中出|颜射|潮吹|痴女|素人|熟女|巨乳|爆乳|无码|有码|抽插|啪啪|约炮|嫩穴|荡妇|淫妻|绿帽|裸聊|自慰|大奶|美鲍|馒头逼|丝袜诱惑|失禁|大尺度|福利姬|操到|内射|白虎|粉穴|美臀|翘臀|骑乘|后入|口爆|吞精|足交|乳交|3P|多P|群P|调教|捆绑|露出|野战|车震|偷拍|走光|透视|鱼香肉丝|蜜桃|果冻|麻豆|探花)`),
+		// Chinese adult leak / amateur patterns
+		compile(`(?:推特.*粉丝.*福利|门槛福利|反差婊|极品.*母狗|阿黑颜|欺负操|狠狠.*操|全网.*裸聊|最新流出.*大尺度|宿舍.*诱惑)`),
+		// Known hentai anime titles (adult content that looks like regular anime)
+		compile(`(?:^|[\s._\[-])(Otomedori|Koutetsu no Majo Annerose|Kuroinu|Euphoria|Starless|Bible Black|La Blue Girl|Words Worth|Discipline|Stringendo|Resort Boin|Kanojo x Kanojo|Overflow|Rance|Mokkai Shiyo|Sei Yariman|Dropout|JK to Ero Konbini|Mankitsu Happening|Baku Ane|Shikkoku no Shaga|Tsumamigui|Kansen Ball Buster|Kyonyuu|Eroge|Itadaki Seieki|Shoujo Ramune|Maki-chan to Nau)(?:[\s._\]-]|$)`),
+		// Adult site watermarks and prolific adult uploaders
+		compile(`(?i)(?:sex8\.cc|91porn|pornhub|xvideos|xhamster|xnxx|javbus|javlib|avgle|18p2p|hjd2048|69av|theporn|selang|suu55|色狼网|性吧|swag\.live|麻豆传媒|蜜桃传媒|果冻传媒|星空传媒|天美传媒|madoubt\.com|caribbeancom|1pondo|heyzo|tokyohot|10musume|kin8tengoku|pacopacomama|383229\.xyz|1024core|t66y|thz\.la|sehuatang|onejav|javmost|javfinder|javguru|javhdporn|javbangers|javhd\.pro|supjav|missav|jable\.tv|XiuRen|MyGirl|Ugirls|Youmi|Xiaoyu|HuaYang|MFStar|MiStar|51vv|91porn\.com|caoliu|1024cl|t66y\.com|草榴|色中色|香蕉社区|Yurievij)`),
 		// Online courses / tutorials (not media)
 		compile(`(?i)(?:^|[\s._-])(Udemy|Coursera|Masterclass|Tutorial|Bootcamp|Course|Certification|Learn\s+\w+\s+in|Complete\s+Guide|from\s+Zero\s+to\s+Hero)(?:[\s._-]|$)`),
 	}
@@ -164,12 +157,17 @@ func Classify(name string, files []File) Category {
 }
 
 // IsAdult returns true if the torrent name matches adult content patterns.
-// Anime releases are excluded since they share some vocabulary.
+// For anime-looking names (bracket groups), only JAV code patterns are skipped
+// since they overlap with anime episode codes like [ABCD-123].
+// Studios, explicit keywords, and site watermarks are always checked.
 func IsAdult(name string) bool {
-	if IsAnime(name) {
-		return false
-	}
-	for _, p := range adultPatterns {
+	isAnime := IsAnime(name)
+	for i, p := range adultPatterns {
+		// Skip JAV code patterns (indices 0-1) for anime-looking names
+		// since they overlap with anime fansub group tags
+		if isAnime && i <= 1 {
+			continue
+		}
 		if p.MatchString(name) {
 			return true
 		}
@@ -233,18 +231,26 @@ func IsJunk(name string, files []File) bool {
 		return true
 	}
 
-	// If there are files but zero video and zero audio, reject
-	// (pure subtitle/nfo packs are useless without video)
+	// If there are files but zero video, check what's left
 	if videoSize == 0 && len(files) > 0 {
 		var audioSize int64
+		var hasSubtitles bool
 		for _, f := range files {
 			ext := strings.ToLower(filepath.Ext(f.Path))
-			if ext == ".mp3" || ext == ".flac" || ext == ".ogg" || ext == ".wav" || ext == ".m4a" || ext == ".opus" || ext == ".wma" {
+			if ext == ".mp3" || ext == ".flac" || ext == ".ogg" || ext == ".wav" || ext == ".m4a" || ext == ".opus" || ext == ".wma" || ext == ".aac" || ext == ".ape" || ext == ".alac" {
 				audioSize += f.Size
 			}
+			if ext == ".srt" || ext == ".ass" || ext == ".ssa" || ext == ".sub" || ext == ".idx" || ext == ".sup" {
+				hasSubtitles = true
+			}
 		}
-		// No video and no significant audio — not media
+		// No video and no audio — not media (pure subtitle/nfo packs)
 		if audioSize == 0 {
+			return true
+		}
+		// Audio-only with no subtitles = music album (not media for this tracker)
+		// Exception: keep if name has media signals (could be audio drama with SxxExx)
+		if !hasSubtitles && !hasMediaSignals(name) {
 			return true
 		}
 	}
@@ -308,7 +314,7 @@ func isAdultName(name string) bool {
 	// Sliding window bigram check against performers
 	// e.g., "Jayden Lee Hardcore" → check "jayden lee", "lee hardcore"
 	if len(words) >= 2 {
-		for i := 0; i < len(words)-1; i++ {
+		for i := range len(words) - 1 {
 			bigram := words[i] + " " + words[i+1]
 			if adultPerformers[bigram] {
 				return true
@@ -318,7 +324,7 @@ func isAdultName(name string) bool {
 
 	// Check trigrams for performers with three-word names
 	if len(words) >= 3 {
-		for i := 0; i < len(words)-2; i++ {
+		for i := range len(words) - 2 {
 			trigram := words[i] + " " + words[i+1] + " " + words[i+2]
 			if adultPerformers[trigram] {
 				return true
