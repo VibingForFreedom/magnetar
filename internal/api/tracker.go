@@ -2,21 +2,18 @@ package api
 
 import (
 	"context"
-	"encoding/hex"
 	"net/http"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/magnetar/magnetar/internal/store"
-	"github.com/magnetar/magnetar/internal/tracker"
 )
 
 type scrapeResponse struct {
-	Scraped  int `json:"scraped"`
-	Updated  int `json:"updated"`
-	Failed   int `json:"failed"`
-	Elapsed  string `json:"elapsed"`
+	Scraped int    `json:"scraped"`
+	Updated int    `json:"updated"`
+	Failed  int    `json:"failed"`
+	Elapsed string `json:"elapsed"`
 }
 
 func (s *Server) handleTrackerScrape(w http.ResponseWriter, r *http.Request) {
@@ -59,85 +56,64 @@ func (s *Server) handleTrackerScrape(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) scrapeAll(ctx context.Context, torrents []*store.Torrent) scrapeResponse {
-	const maxWorkers = 20
-
-	type scrapeJob struct {
-		torrent *store.Torrent
-		result  tracker.ScrapeResult
-		ok      bool
+	// Collect all hashes
+	hashes := make([][20]byte, len(torrents))
+	hashToTorrent := make(map[[20]byte]*store.Torrent, len(torrents))
+	for i, t := range torrents {
+		var h [20]byte
+		copy(h[:], t.InfoHash)
+		hashes[i] = h
+		hashToTorrent[h] = t
 	}
 
-	jobs := make(chan *store.Torrent, len(torrents))
-	results := make(chan scrapeJob, len(torrents))
+	s.metrics.TrackerScrapeAttempts.Add(int64(len(hashes)))
+	s.metrics.RecordTrackerScrape(int64(len(hashes)))
 
-	workerCount := maxWorkers
-	if len(torrents) < workerCount {
-		workerCount = len(torrents)
-	}
-
-	var wg sync.WaitGroup
-	for range workerCount {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for t := range jobs {
-				s.metrics.TrackerScrapeAttempts.Add(1)
-				s.metrics.RecordTrackerScrape(1)
-
-				var hash [20]byte
-				copy(hash[:], t.InfoHash)
-
-				sr := s.trackerScraper.Scrape(ctx, hash)
-				ok := sr.Seeders > 0 || sr.Leechers > 0
-
-				if ok {
-					s.metrics.TrackerScrapeSuccesses.Add(1)
-				} else {
-					s.metrics.TrackerScrapeFailures.Add(1)
-				}
-
-				results <- scrapeJob{torrent: t, result: sr, ok: ok}
-			}
-		}()
-	}
-
-	for _, t := range torrents {
-		jobs <- t
-	}
-	close(jobs)
-
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
+	// Single batch scrape call
+	results := s.trackerScraper.ScrapeBatch(ctx, hashes)
 
 	var resp scrapeResponse
-	for j := range results {
-		resp.Scraped++
-		if !j.ok {
+	resp.Scraped = len(hashes)
+
+	var updates []store.SeedersLeechersUpdate
+	for _, h := range hashes {
+		r, ok := results[h]
+		if !ok || (r.Seeders == 0 && r.Leechers == 0) {
 			resp.Failed++
+			s.metrics.TrackerScrapeFailures.Add(1)
 			continue
 		}
 
+		s.metrics.TrackerScrapeSuccesses.Add(1)
+
+		t := hashToTorrent[h]
 		updated := false
-		if j.result.Seeders > j.torrent.Seeders {
-			j.torrent.Seeders = j.result.Seeders
+		seeders := t.Seeders
+		if r.Seeders > seeders {
+			seeders = r.Seeders
 			updated = true
 		}
-		if j.result.Leechers > j.torrent.Leechers {
-			j.torrent.Leechers = j.result.Leechers
+		leechers := t.Leechers
+		if r.Leechers > leechers {
+			leechers = r.Leechers
 			updated = true
 		}
 
 		if updated {
-			j.torrent.UpdatedAt = time.Now().Unix()
-			if err := s.store.UpsertTorrent(ctx, j.torrent); err != nil {
-				s.logger.Printf("tracker scrape update failed for %s: %v",
-					hex.EncodeToString(j.torrent.InfoHash), err)
-				continue
-			}
-			s.metrics.TrackerScrapeUpdated.Add(1)
-			resp.Updated++
+			updates = append(updates, store.SeedersLeechersUpdate{
+				InfoHash: t.InfoHash,
+				Seeders:  seeders,
+				Leechers: leechers,
+			})
+		}
+	}
+
+	if len(updates) > 0 {
+		if err := s.store.BulkUpdateSeedersLeechers(ctx, updates); err != nil {
+			s.logger.Printf("tracker scrape bulk update failed: %v", err)
+		} else {
+			s.metrics.TrackerScrapeUpdated.Add(int64(len(updates)))
+			resp.Updated = len(updates)
 		}
 	}
 

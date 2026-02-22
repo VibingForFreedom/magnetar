@@ -8,7 +8,6 @@ import (
 	"github.com/magnetar/magnetar/internal/crawler/metainfo"
 	"github.com/magnetar/magnetar/internal/crawler/protocol"
 	"github.com/magnetar/magnetar/internal/store"
-	"github.com/magnetar/magnetar/internal/tracker"
 )
 
 // runPersistTorrents receives metadata from the pipeline, classifies it,
@@ -167,78 +166,83 @@ func mapQuality(q classify.Quality) store.Quality {
 	}
 }
 
-// fireTrackerScrapes launches async tracker scrapes for newly persisted torrents.
+// fireTrackerScrapes performs a batch tracker scrape for all newly persisted
+// torrents and bulk-updates seeders/leechers counts in a single DB call.
 func (c *Crawler) fireTrackerScrapes(ctx context.Context, torrents []*store.Torrent) {
-	for _, t := range torrents {
-		go func(torrent *store.Torrent) {
-			c.metrics.TrackerScrapeAttempts.Add(1)
-			c.metrics.RecordTrackerScrape(1)
+	hashes := make([][20]byte, len(torrents))
+	hashToTorrent := make(map[[20]byte]*store.Torrent, len(torrents))
+	for i, t := range torrents {
+		var h [20]byte
+		copy(h[:], t.InfoHash)
+		hashes[i] = h
+		hashToTorrent[h] = t
+	}
 
-			var hash [20]byte
-			copy(hash[:], torrent.InfoHash)
+	c.metrics.TrackerScrapeAttempts.Add(int64(len(hashes)))
+	c.metrics.RecordTrackerScrape(int64(len(hashes)))
 
-			result := c.trackerScraper.Scrape(ctx, hash)
-			if result.Seeders == 0 && result.Leechers == 0 {
+	go func() {
+		results := c.trackerScraper.ScrapeBatch(ctx, hashes)
+
+		var updates []store.SeedersLeechersUpdate
+		for h, r := range results {
+			if r.Seeders == 0 && r.Leechers == 0 {
 				c.metrics.TrackerScrapeFailures.Add(1)
-				return
+				continue
 			}
-
 			c.metrics.TrackerScrapeSuccesses.Add(1)
-			c.updateTrackerCounts(ctx, torrent, result)
-		}(t)
-	}
-}
 
-func (c *Crawler) updateTrackerCounts(ctx context.Context, torrent *store.Torrent, result tracker.ScrapeResult) {
-	existing, err := c.store.GetTorrent(ctx, torrent.InfoHash)
-	if err != nil {
-		return
-	}
-
-	updated := false
-	if result.Seeders > existing.Seeders {
-		existing.Seeders = result.Seeders
-		updated = true
-	}
-	if result.Leechers > existing.Leechers {
-		existing.Leechers = result.Leechers
-		updated = true
-	}
-
-	if updated {
-		existing.UpdatedAt = time.Now().Unix()
-		if err := c.store.UpsertTorrent(ctx, existing); err != nil {
-			c.logger.Error("failed to update tracker counts", "error", err)
-		} else {
-			c.metrics.TrackerScrapeUpdated.Add(1)
+			t := hashToTorrent[h]
+			if r.Seeders > t.Seeders || r.Leechers > t.Leechers {
+				seeders := t.Seeders
+				if r.Seeders > seeders {
+					seeders = r.Seeders
+				}
+				leechers := t.Leechers
+				if r.Leechers > leechers {
+					leechers = r.Leechers
+				}
+				updates = append(updates, store.SeedersLeechersUpdate{
+					InfoHash: t.InfoHash,
+					Seeders:  seeders,
+					Leechers: leechers,
+				})
+			}
 		}
-	}
+
+		// Count hashes that got no result at all as failures
+		noResult := len(hashes) - len(results)
+		if noResult > 0 {
+			c.metrics.TrackerScrapeFailures.Add(int64(noResult))
+		}
+
+		if len(updates) > 0 {
+			if err := c.store.BulkUpdateSeedersLeechers(ctx, updates); err != nil {
+				c.logger.Error("failed to bulk update tracker counts", "error", err)
+			} else {
+				c.metrics.TrackerScrapeUpdated.Add(int64(len(updates)))
+			}
+		}
+	}()
 }
 
-// runPersistSources receives scrape results and updates seeders/leechers.
+// runPersistSources receives scrape results and updates seeders/leechers in bulk.
 func (c *Crawler) runPersistSources(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case scrapes := <-c.persistSources.Out():
+			updates := make([]store.SeedersLeechersUpdate, 0, len(scrapes))
 			for _, s := range scrapes {
-				seeders := int(s.bfsd.ApproximatedSize())
-				leechers := int(s.bfpe.ApproximatedSize())
-
-				// Look up existing torrent and update S/L
-				existing, err := c.store.GetTorrent(ctx, s.infoHash[:])
-				if err != nil {
-					continue
-				}
-
-				existing.Seeders = seeders
-				existing.Leechers = leechers
-				existing.UpdatedAt = time.Now().Unix()
-
-				if upsertErr := c.store.UpsertTorrent(ctx, existing); upsertErr != nil {
-					c.logger.Error("failed to update torrent source", "error", upsertErr)
-				}
+				updates = append(updates, store.SeedersLeechersUpdate{
+					InfoHash: s.infoHash[:],
+					Seeders:  int(s.bfsd.ApproximatedSize()),
+					Leechers: int(s.bfpe.ApproximatedSize()),
+				})
+			}
+			if err := c.store.BulkUpdateSeedersLeechers(ctx, updates); err != nil {
+				c.logger.Error("failed to bulk update torrent sources", "error", err)
 			}
 			c.logger.Debug("persisted torrent sources", "count", len(scrapes))
 		}

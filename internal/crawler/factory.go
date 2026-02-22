@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/magnetar/magnetar/internal/crawler/concurrency"
+
 	"github.com/magnetar/magnetar/internal/crawler/dht/client"
 	"github.com/magnetar/magnetar/internal/crawler/dht/ktable"
 	"github.com/magnetar/magnetar/internal/crawler/dht/responder"
@@ -61,7 +62,7 @@ func New(cfg Config, st store.Store, m *metrics.Metrics, logger *slog.Logger) (*
 		nodesForSampleInfoHashes: concurrency.NewBufferedConcurrentChannel[ktable.Node](
 			10*scalingFactor, 10*scalingFactor),
 		infoHashTriage: concurrency.NewBatchingChannel[nodeHasPeersForHash](
-			10*scalingFactor, 1000, 20*time.Second),
+			10*scalingFactor, 1000, 5*time.Second),
 		getPeers: concurrency.NewBufferedConcurrentChannel[nodeHasPeersForHash](
 			10*scalingFactor, 20*scalingFactor),
 		scrape: concurrency.NewBufferedConcurrentChannel[nodeHasPeersForHash](
