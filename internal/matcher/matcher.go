@@ -62,6 +62,7 @@ type Matcher struct {
 	metrics *metrics.Metrics
 	tmdb    *TMDBClient
 	tvdb    *TVDBClient
+	cache   *MatcherCache
 	anilist *AniListClient
 	kitsu   *KitsuClient
 	animedb *animedb.AnimeDB
@@ -107,7 +108,24 @@ func New(cfg Config, st store.Store, adb *animedb.AnimeDB, met *metrics.Metrics,
 		m.tvdb = NewTVDBClient(cfg.TVDBAPIKey)
 	}
 
+	if cfg.ValkeyURL != "" {
+		cache, err := NewMatcherCache(cfg.ValkeyURL, m.logger)
+		if err != nil {
+			m.logger.Error("failed to connect to valkey, caching disabled", "error", err)
+		} else {
+			m.cache = cache
+			m.logger.Info("valkey cache enabled")
+		}
+	}
+
 	return m
+}
+
+// CloseCache shuts down the Valkey cache connection.
+func (m *Matcher) CloseCache() {
+	if m.cache != nil {
+		m.cache.Close()
+	}
 }
 
 func (m *Matcher) Start(ctx context.Context) error {
@@ -325,31 +343,31 @@ func (m *Matcher) matchOne(ctx context.Context, t *store.Torrent) store.MatchRes
 }
 
 func (m *Matcher) matchByIMDB(ctx context.Context, t *store.Torrent, imdbID string) (store.MatchResult, bool) {
-	findResult, err := m.tmdb.FindByIMDB(ctx, imdbID)
+	findRes, err := m.cache.FindByIMDB(ctx, m.tmdb, imdbID)
 	if err != nil {
 		m.logger.Warn("tmdb find by imdb failed", "imdb_id", imdbID, "error", err)
 		return m.failResult(t), false
 	}
 
-	if findResult == nil {
+	if findRes == nil {
 		return store.MatchResult{}, false
 	}
 
 	result := store.MatchResult{
 		Status: store.MatchMatched,
 		IMDBID: imdbID,
-		TMDBID: findResult.TMDBID,
-		Year:   findResult.Year,
+		TMDBID: findRes.TMDBID,
+		Year:   findRes.Year,
 	}
 
 	// Enrich with external IDs
-	switch findResult.MediaType {
+	switch findRes.MediaType {
 	case "movie":
-		if extIMDB, err := m.tmdb.GetMovieExternalIDs(ctx, findResult.TMDBID); err == nil && extIMDB != "" {
+		if extIMDB, err := m.cache.GetMovieExternalIDs(ctx, m.tmdb, findRes.TMDBID); err == nil && extIMDB != "" {
 			result.IMDBID = extIMDB
 		}
 	case "tv":
-		if extIMDB, tvdbID, err := m.tmdb.GetTVExternalIDs(ctx, findResult.TMDBID); err == nil {
+		if extIMDB, tvdbID, err := m.cache.GetTVExternalIDs(ctx, m.tmdb, findRes.TMDBID); err == nil {
 			if extIMDB != "" {
 				result.IMDBID = extIMDB
 			}
@@ -386,7 +404,7 @@ func (m *Matcher) matchMovie(ctx context.Context, t *store.Torrent, parsed *clas
 	title := parsed.Title
 	year := parsed.Year
 
-	tmdbID, releaseYear, err := m.tmdb.SearchMovie(ctx, title, year)
+	tmdbID, releaseYear, err := m.cache.SearchMovie(ctx, m.tmdb, title, year)
 	if err != nil {
 		m.logger.Warn("tmdb search movie failed", "title", title, "error", err)
 		return m.failResult(t)
@@ -394,7 +412,7 @@ func (m *Matcher) matchMovie(ctx context.Context, t *store.Torrent, parsed *clas
 
 	// Retry without year if no results
 	if tmdbID == 0 && year > 0 {
-		tmdbID, releaseYear, err = m.tmdb.SearchMovie(ctx, title, 0)
+		tmdbID, releaseYear, err = m.cache.SearchMovie(ctx, m.tmdb, title, 0)
 		if err != nil {
 			m.logger.Warn("tmdb search movie retry failed", "title", title, "error", err)
 			return m.failResult(t)
@@ -412,7 +430,7 @@ func (m *Matcher) matchMovie(ctx context.Context, t *store.Torrent, parsed *clas
 	}
 
 	// Get IMDB ID
-	if imdbID, err := m.tmdb.GetMovieExternalIDs(ctx, tmdbID); err == nil && imdbID != "" {
+	if imdbID, err := m.cache.GetMovieExternalIDs(ctx, m.tmdb, tmdbID); err == nil && imdbID != "" {
 		result.IMDBID = imdbID
 	}
 
@@ -434,7 +452,7 @@ func (m *Matcher) matchTV(ctx context.Context, t *store.Torrent, parsed *classif
 	title := parsed.Title
 	year := parsed.Year
 
-	tmdbID, firstAirYear, err := m.tmdb.SearchTV(ctx, title, year)
+	tmdbID, firstAirYear, err := m.cache.SearchTV(ctx, m.tmdb, title, year)
 	if err != nil {
 		m.logger.Warn("tmdb search tv failed", "title", title, "error", err)
 		return m.failResult(t)
@@ -442,7 +460,7 @@ func (m *Matcher) matchTV(ctx context.Context, t *store.Torrent, parsed *classif
 
 	// Retry without year if no results
 	if tmdbID == 0 && year > 0 {
-		tmdbID, firstAirYear, err = m.tmdb.SearchTV(ctx, title, 0)
+		tmdbID, firstAirYear, err = m.cache.SearchTV(ctx, m.tmdb, title, 0)
 		if err != nil {
 			m.logger.Warn("tmdb search tv retry failed", "title", title, "error", err)
 			return m.failResult(t)
@@ -460,7 +478,7 @@ func (m *Matcher) matchTV(ctx context.Context, t *store.Torrent, parsed *classif
 	}
 
 	// Get external IDs (IMDB + TVDB)
-	if imdbID, tvdbID, err := m.tmdb.GetTVExternalIDs(ctx, tmdbID); err == nil {
+	if imdbID, tvdbID, err := m.cache.GetTVExternalIDs(ctx, m.tmdb, tmdbID); err == nil {
 		if imdbID != "" {
 			result.IMDBID = imdbID
 		}
@@ -469,7 +487,7 @@ func (m *Matcher) matchTV(ctx context.Context, t *store.Torrent, parsed *classif
 
 	// If TVDB ID still missing, try TVDB directly
 	if result.TVDBID == 0 && m.tvdb != nil {
-		if tvdbID, err := m.tvdb.SearchSeries(ctx, title, year); err == nil && tvdbID > 0 {
+		if tvdbID, err := m.cache.SearchSeries(ctx, m.tvdb, title, year); err == nil && tvdbID > 0 {
 			result.TVDBID = tvdbID
 		}
 	}
@@ -528,11 +546,11 @@ func (m *Matcher) matchAnime(ctx context.Context, t *store.Torrent, parsed *clas
 
 	// TMDB cross-reference
 	if m.tmdb != nil {
-		if tmdbID, _, err := m.tmdb.SearchTV(ctx, title, year); err == nil && tmdbID > 0 {
+		if tmdbID, _, err := m.cache.SearchTV(ctx, m.tmdb, title, year); err == nil && tmdbID > 0 {
 			result.TMDBID = tmdbID
 			result.Status = store.MatchMatched
 
-			if imdbID, tvdbID, err := m.tmdb.GetTVExternalIDs(ctx, tmdbID); err == nil {
+			if imdbID, tvdbID, err := m.cache.GetTVExternalIDs(ctx, m.tmdb, tmdbID); err == nil {
 				if imdbID != "" {
 					result.IMDBID = imdbID
 				}

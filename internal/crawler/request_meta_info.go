@@ -21,6 +21,7 @@ func (c *Crawler) runRequestMetaInfo(ctx context.Context) {
 			return
 		}
 		c.metrics.MetadataFetched.Add(1)
+		c.metrics.RecordMetadata(1)
 		select {
 		case <-ctx.Done():
 		case c.persistTorrents.In() <- infoHashWithMetaInfo{

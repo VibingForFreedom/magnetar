@@ -247,6 +247,7 @@ func runServe(_ *flag.FlagSet) error { //nolint:unparam
 	if metaMatcher != nil {
 		logger.Info("stopping metadata matcher")
 		metaMatcher.Stop()
+		metaMatcher.CloseCache()
 	}
 
 	// Stop DHT crawler

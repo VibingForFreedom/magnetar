@@ -186,6 +186,46 @@ func (c *TMDBClient) GetTVExternalIDs(ctx context.Context, tmdbID int) (imdbID s
 	return resp.IMDBID, resp.TVDBID, nil
 }
 
+func (c *TMDBClient) GetAlternativeTitles(ctx context.Context, mediaType string, tmdbID int) ([]string, error) {
+	var path string
+	switch mediaType {
+	case "movie":
+		path = fmt.Sprintf("/movie/%d/alternative_titles", tmdbID)
+	case "tv":
+		path = fmt.Sprintf("/tv/%d/alternative_titles", tmdbID)
+	default:
+		return nil, fmt.Errorf("unknown media type: %s", mediaType)
+	}
+
+	var resp struct {
+		Titles []struct {
+			Title string `json:"title"`
+		} `json:"titles"`
+		Results []struct {
+			Title string `json:"title"`
+		} `json:"results"`
+	}
+
+	if err := c.doGet(ctx, path, nil, &resp); err != nil {
+		return nil, fmt.Errorf("tmdb get alternative titles: %w", err)
+	}
+
+	// Movie uses "titles", TV uses "results"
+	entries := resp.Titles
+	if len(entries) == 0 {
+		entries = resp.Results
+	}
+
+	titles := make([]string, 0, len(entries))
+	for _, t := range entries {
+		if t.Title != "" {
+			titles = append(titles, t.Title)
+		}
+	}
+
+	return titles, nil
+}
+
 func (c *TMDBClient) doGet(ctx context.Context, path string, params url.Values, dst interface{}) error {
 	if err := c.limiter.Wait(ctx); err != nil {
 		return fmt.Errorf("rate limiter: %w", err)

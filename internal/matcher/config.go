@@ -13,6 +13,7 @@ type Config struct {
 	MaxAttempts int
 	TMDBAPIKey  string
 	TVDBAPIKey  string
+	ValkeyURL   string
 }
 
 func NewConfig(cfg *config.Config) Config {
@@ -23,5 +24,6 @@ func NewConfig(cfg *config.Config) Config {
 		MaxAttempts: cfg.MatchMaxAttempts,
 		TMDBAPIKey:  cfg.TMDBAPIKey,
 		TVDBAPIKey:  cfg.TVDBAPIKey,
+		ValkeyURL:   cfg.ValkeyURL,
 	}
 }

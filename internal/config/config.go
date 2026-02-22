@@ -40,6 +40,8 @@ type Config struct {
 	TrackerList    []string
 	TrackerTimeout time.Duration
 
+	ValkeyURL string
+
 	AnimeDBEnabled bool
 
 	BackupEnabled  bool
@@ -85,6 +87,8 @@ func Load() (*Config, error) {
 		TrackerEnabled: getEnvBool("MAGNETAR_TRACKER_ENABLED", false),
 		TrackerList:    getEnvStringSlice("MAGNETAR_TRACKER_LIST", nil),
 		TrackerTimeout: getEnvDuration("MAGNETAR_TRACKER_TIMEOUT", 5*time.Second),
+
+		ValkeyURL: getEnvString("MAGNETAR_VALKEY_URL", ""),
 
 		AnimeDBEnabled: getEnvBool("MAGNETAR_ANIMEDB_ENABLED", true),
 
