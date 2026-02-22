@@ -22,6 +22,8 @@ func (c *Crawler) runPersistTorrents(ctx context.Context) {
 			torrents := make([]*store.Torrent, 0, len(items))
 			hashMap := make(map[protocol.ID]infoHashWithMetaInfo, len(items))
 
+			var rejectedHashes [][]byte
+
 			for _, item := range items {
 				if _, ok := hashMap[item.infoHash]; ok {
 					continue
@@ -30,9 +32,17 @@ func (c *Crawler) runPersistTorrents(ctx context.Context) {
 
 				t, ok := c.buildTorrent(item.infoHash, item.metaInfo, item.peerCount)
 				if !ok {
+					rejectedHashes = append(rejectedHashes, item.infoHash[:])
 					continue
 				}
 				torrents = append(torrents, t)
+			}
+
+			// Bulk-insert rejected hashes so triage can skip them on rediscovery
+			if len(rejectedHashes) > 0 {
+				if err := c.store.RejectHashes(ctx, rejectedHashes); err != nil {
+					c.logger.Error("failed to reject hashes", "error", err)
+				}
 			}
 
 			if len(torrents) == 0 {

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"time"
 )
 
 type Category int
@@ -379,6 +380,10 @@ type Store interface {
 	GetSetting(ctx context.Context, key string) (string, error)
 	SetSetting(ctx context.Context, key, value string) error
 	GetAllSettings(ctx context.Context) (map[string]string, error)
+	RejectHashes(ctx context.Context, hashes [][]byte) error
+	AreRejected(ctx context.Context, hashes [][]byte) (map[[20]byte]bool, error)
+	PurgeOldRejected(ctx context.Context, olderThan time.Duration) (int64, error)
+	PurgeJunkTorrents(ctx context.Context) (int64, error)
 	Migrate(ctx context.Context) error
 	Close() error
 	Checkpoint(ctx context.Context) error

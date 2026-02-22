@@ -44,16 +44,42 @@ func (c *Crawler) runInfoHashTriage(ctx context.Context) {
 				var id protocol.ID
 				copy(id[:], t.InfoHash)
 				existingMap[id] = existingInfo{
-					hasFiles:   len(t.Files) > 0,
-					seeders:    t.Seeders,
-					leechers:   t.Leechers,
-					updatedAt:  t.UpdatedAt,
+					hasFiles:  len(t.Files) > 0,
+					seeders:   t.Seeders,
+					leechers:  t.Leechers,
+					updatedAt: t.UpdatedAt,
+				}
+			}
+
+			// Collect hashes not in the torrents table to check the reject list
+			var unknownHashes [][]byte
+			for hash := range reqMap {
+				if _, found := existingMap[hash]; !found {
+					unknownHashes = append(unknownHashes, hash[:])
+				}
+			}
+
+			// Check rejected hashes — skip metadata fetch for known junk
+			rejectedMap := make(map[protocol.ID]bool)
+			if len(unknownHashes) > 0 {
+				rejected, rejectErr := c.store.AreRejected(ctx, unknownHashes)
+				if rejectErr != nil {
+					c.logger.Error("failed to check rejected hashes", "error", rejectErr)
+				} else {
+					for h := range rejected {
+						var id protocol.ID
+						copy(id[:], h[:])
+						rejectedMap[id] = true
+					}
 				}
 			}
 
 			for hash, req := range reqMap {
 				info, found := existingMap[hash]
 				switch {
+				case rejectedMap[hash]:
+					// Known junk — skip entirely
+					continue
 				case !found:
 					// New hash — fetch metadata
 					select {

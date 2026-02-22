@@ -164,6 +164,11 @@ func (s *SQLiteStore) Migrate(ctx context.Context) error {
 	CREATE INDEX IF NOT EXISTS idx_discovered ON torrents(discovered_at DESC);
 	CREATE INDEX IF NOT EXISTS idx_match_queue ON torrents(match_status, match_after) WHERE match_status != 1;
 
+	CREATE TABLE IF NOT EXISTS rejected_hashes (
+		info_hash    BLOB PRIMARY KEY,
+		rejected_at  INTEGER NOT NULL
+	) STRICT;
+
 	CREATE TABLE IF NOT EXISTS settings (
 		key   TEXT PRIMARY KEY,
 		value TEXT NOT NULL
@@ -832,6 +837,101 @@ func (s *SQLiteStore) GetAllSettings(ctx context.Context) (map[string]string, er
 		return nil, fmt.Errorf("iterating settings: %w", err)
 	}
 	return settings, nil
+}
+
+func (s *SQLiteStore) RejectHashes(ctx context.Context, hashes [][]byte) error {
+	if len(hashes) == 0 {
+		return nil
+	}
+
+	tx, err := s.writer.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("beginning transaction: %w", err)
+	}
+
+	stmt, err := tx.PrepareContext(ctx, `INSERT OR IGNORE INTO rejected_hashes (info_hash, rejected_at) VALUES (?, ?)`)
+	if err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("preparing statement: %w", err)
+	}
+	defer func() { _ = stmt.Close() }()
+
+	now := time.Now().Unix()
+	for _, h := range hashes {
+		if _, err := stmt.ExecContext(ctx, h, now); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("inserting rejected hash: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing transaction: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) AreRejected(ctx context.Context, hashes [][]byte) (map[[20]byte]bool, error) {
+	result := make(map[[20]byte]bool)
+	if len(hashes) == 0 {
+		return result, nil
+	}
+
+	placeholders := ""
+	args := make([]interface{}, len(hashes))
+	for i, h := range hashes {
+		if i > 0 {
+			placeholders += ","
+		}
+		placeholders += "?"
+		args[i] = h
+	}
+
+	//nolint:gosec // placeholders are parameterized
+	query := fmt.Sprintf(`SELECT info_hash FROM rejected_hashes WHERE info_hash IN (%s)`, placeholders)
+
+	rows, err := s.reader.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("querying rejected hashes: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var h []byte
+		if err := rows.Scan(&h); err != nil {
+			return nil, fmt.Errorf("scanning rejected hash: %w", err)
+		}
+		if len(h) == 20 {
+			var key [20]byte
+			copy(key[:], h)
+			result[key] = true
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating rows: %w", err)
+	}
+
+	return result, nil
+}
+
+func (s *SQLiteStore) PurgeOldRejected(ctx context.Context, olderThan time.Duration) (int64, error) {
+	cutoff := time.Now().Add(-olderThan).Unix()
+	result, err := s.writer.ExecContext(ctx, `DELETE FROM rejected_hashes WHERE rejected_at < ?`, cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("purging old rejected hashes: %w", err)
+	}
+	return result.RowsAffected()
+}
+
+func (s *SQLiteStore) PurgeJunkTorrents(ctx context.Context) (int64, error) {
+	// Delete torrents with match_after set far in the future (100-year junk marker).
+	// These are legacy junk torrents from before the junk filter existed.
+	cutoff := time.Now().Unix() + 50*365*24*60*60 // now + 50 years
+	result, err := s.writer.ExecContext(ctx, `DELETE FROM torrents WHERE match_after > ?`, cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("purging junk torrents: %w", err)
+	}
+	return result.RowsAffected()
 }
 
 func (s *SQLiteStore) Close() error {

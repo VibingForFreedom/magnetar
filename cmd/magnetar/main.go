@@ -213,6 +213,9 @@ func runServe(_ *flag.FlagSet) error { //nolint:unparam
 		go adb.Start(ctx)
 	}
 
+	// Start daily purge goroutine for rejected hashes and legacy junk
+	go runDailyPurge(ctx, st, logger)
+
 	// Start metadata matcher if enabled
 	var metaMatcher *matcher.Matcher
 	if cfg.MatchEnabled {
@@ -344,4 +347,34 @@ func runBackup(args []string) error {
 
 	logger.Info("backup completed successfully", "path", *output)
 	return nil
+}
+
+func runDailyPurge(ctx context.Context, st store.Store, logger *slog.Logger) {
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			purgeCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+
+			purged, err := st.PurgeOldRejected(purgeCtx, 90*24*time.Hour)
+			if err != nil {
+				logger.Error("failed to purge old rejected hashes", "error", err)
+			} else if purged > 0 {
+				logger.Info("purged expired rejected hashes", "count", purged)
+			}
+
+			junkPurged, err := st.PurgeJunkTorrents(purgeCtx)
+			if err != nil {
+				logger.Error("failed to purge junk torrents", "error", err)
+			} else if junkPurged > 0 {
+				logger.Info("purged legacy junk torrents", "count", junkPurged)
+			}
+
+			cancel()
+		}
+	}
 }
