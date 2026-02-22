@@ -90,6 +90,11 @@ func (c *Crawler) buildTorrent(hash protocol.ID, info metainfo.Info, peerCount i
 		})
 	}
 
+	// Fast reject: discard software, games, archives, etc.
+	if classify.IsJunk(name, classifyFiles) {
+		return nil, false
+	}
+
 	// Classify the torrent
 	cat := classify.Classify(name, classifyFiles)
 
