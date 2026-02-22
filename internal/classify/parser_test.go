@@ -525,6 +525,163 @@ func TestIsMovie(t *testing.T) {
 	}
 }
 
+func TestIsAdult(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{"JAV code SNIS-070", "SNIS-070", true},
+		{"JAV code CAWD-507", "CAWD-507", true},
+		{"JAV code with suffix", "MIAB-575-C", true},
+		{"Porn studio Brazzers", "Brazzers.21.05.15.Gabbie.Carter.XXX.1080p", true},
+		{"Porn studio RealityKings", "RealityKings - MomsBangTeens - Lucy Tyler", true},
+		{"XXX keyword", "PornWorld.25.09.20.Sladyen.Skaya.XXX.1080p.MP4", true},
+		{"Chinese adult", "骚逼媳妇归来帮我泻火", true},
+		{"Adult site watermark", "sex8.cc some content", true},
+		{"OnlyFans", "OnlyFans_gina-carla-onlyfans-nude-tease", true},
+		{"Online course", "Udemy Complete Python Bootcamp 2024", true},
+		{"Not adult - normal movie", "The.Matrix.1999.1080p.BluRay", false},
+		{"Not adult - TV show", "The.Last.of.Us.S01E01.1080p.WEB-DL", false},
+		{"Not adult - anime uncensored", "[SubGroup] Prison School Uncensored - 01 [1080p].mkv", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := IsAdult(tt.input)
+			if got != tt.want {
+				t.Errorf("IsAdult(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsJunkAdultContent(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{"JAV code filtered", "SDDE-623", true},
+		{"Porn site filtered", "PornWorld.25.09.20.XXX.1080p.MP4", true},
+		{"Normal movie passes", "Oppenheimer.2023.1080p.WEB-DL", false},
+		{"Anime with uncensored passes", "[SubGroup] Anime Title Uncensored - 01 [1080p].mkv", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := IsJunk(tt.input, nil)
+			if got != tt.want {
+				t.Errorf("IsJunk(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEpisodeTitleTruncation(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantTitle string
+	}{
+		{
+			name:      "Episode title stripped",
+			input:     "Solo.Leveling.S02E06.Dont.Look.Down.on.My.Guys.1080p.CR.WEB-DL",
+			wantTitle: "Solo Leveling",
+		},
+		{
+			name:      "No episode title pollution",
+			input:     "The.Rookie.S07E08.Wildfire.1080p.AMZN.WEB-DL",
+			wantTitle: "The Rookie",
+		},
+		{
+			name:      "3-digit episode",
+			input:     "The.Young.and.the.Restless.S52E112.1080p.WEB.h264",
+			wantTitle: "The Young and the Restless",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Parse(tt.input)
+			if got.Title != tt.wantTitle {
+				t.Errorf("Title = %q, want %q", got.Title, tt.wantTitle)
+			}
+		})
+	}
+}
+
+func TestSiteWatermarkStripping(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantTitle string
+	}{
+		{
+			name:      "www.UIndex.org prefix",
+			input:     "www.UIndex.org    -    Predator.Badlands.2025.1080p.TELESYNC.V2.x264-SyncUP",
+			wantTitle: "Predator Badlands",
+		},
+		{
+			name:      "www.Torrenting.com prefix",
+			input:     "www.Torrenting.com   -    In.and.Out.1997.720p.WEB.h264-NOMA",
+			wantTitle: "In and Out",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Parse(tt.input)
+			if got.Title != tt.wantTitle {
+				t.Errorf("Title = %q, want %q", got.Title, tt.wantTitle)
+			}
+		})
+	}
+}
+
+func TestSpanishTVPatterns(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		wantTV      bool
+		wantSeason  int
+		wantEpisode int
+	}{
+		{
+			name:        "Temporada pattern",
+			input:       "The Resident - Temporada 1 [HDTV][Cap.101]",
+			wantTV:      true,
+			wantSeason:  1,
+			wantEpisode: -1, // Cap is in brackets, parsed separately
+		},
+		{
+			name:        "Cap pattern standalone",
+			input:       "La lista final [HDTV][Cap.102]",
+			wantTV:      true,
+			wantSeason:  -1,
+			wantEpisode: -1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotTV := IsTV(tt.input)
+			if gotTV != tt.wantTV {
+				t.Errorf("IsTV(%q) = %v, want %v", tt.input, gotTV, tt.wantTV)
+			}
+			if tt.wantSeason != 0 || tt.wantEpisode != 0 {
+				p := Parse(tt.input)
+				if tt.wantSeason != 0 && p.Season != tt.wantSeason {
+					t.Errorf("Season = %d, want %d", p.Season, tt.wantSeason)
+				}
+				if tt.wantEpisode != 0 && p.Episode != tt.wantEpisode {
+					t.Errorf("Episode = %d, want %d", p.Episode, tt.wantEpisode)
+				}
+			}
+		})
+	}
+}
+
 func TestHasMediaFiles(t *testing.T) {
 	tests := []struct {
 		name  string

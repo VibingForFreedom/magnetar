@@ -69,6 +69,11 @@ func Parse(name string) *ParsedName {
 func extractTitle(name string, p *ParsedName) string {
 	title := name
 
+	// Strip site watermark prefixes: "www.Site.org - ", "www.Site.com   -   "
+	title = siteWatermarkPattern.ReplaceAllString(title, "")
+	// Strip site@prefix@ and site@prefix@content watermarks
+	title = siteAtWatermarkPattern.ReplaceAllString(title, "")
+
 	extPattern := regexp.MustCompile(`\.(mkv|mp4|avi|wmv|ts|m2ts)$`)
 	title = extPattern.ReplaceAllString(title, "")
 
@@ -79,12 +84,27 @@ func extractTitle(name string, p *ParsedName) string {
 	title = regexp.MustCompile(`(?i)\s*\[[^\]]*\]\s*`).ReplaceAllString(title, " ")
 	title = regexp.MustCompile(`(?i)\s*\([^\)]*\)\s*`).ReplaceAllString(title, " ")
 
+	// For TV: truncate at the SxEx position instead of just removing the token.
+	// This prevents episode titles from polluting the show title.
+	// e.g. "Solo.Leveling.S02E06.Dont.Look.Down.1080p" → "Solo Leveling"
 	if p.Season != -1 || p.Episode != -1 {
+		truncated := false
 		for _, pat := range seasonEpisodePatterns {
-			title = pat.ReplaceAllString(title, " ")
+			loc := pat.FindStringIndex(title)
+			if loc != nil {
+				title = title[:loc[0]]
+				truncated = true
+				break
+			}
 		}
-		for _, pat := range episodeOnlyPatterns {
-			title = pat.ReplaceAllString(title, " ")
+		if !truncated {
+			for _, pat := range episodeOnlyPatterns {
+				loc := pat.FindStringIndex(title)
+				if loc != nil {
+					title = title[:loc[0]]
+					break
+				}
+			}
 		}
 	}
 

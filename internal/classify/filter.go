@@ -117,6 +117,24 @@ var (
 		compile(`(?i)[\s._-](nulled|cracked|warez|scene)[\s._-]`),
 		compile(`(?i)(adobe|autodesk|microsoft|office)\s+(20\d{2}|cs\d|cc)`),
 	}
+
+	// Adult content patterns — JAV codes, porn studios, explicit keywords.
+	adultPatterns = []*regexp.Regexp{
+		// JAV codes: 2-5 uppercase letters followed by hyphen and 3-5 digits, optionally with suffix
+		compile(`(?:^|[\s._\[@])([A-Z]{2,5})-(\d{3,5})(?:-?[A-Z])?(?:[\s._\]@]|$)`),
+		// Japanese adult-specific terms (uncensored excluded — used in anime)
+		compile(`(?i)(?:^|[\s._-])(無修正|中出し|潮吹き|痴女|素人|熟女|巨乳|美乳|爆乳|淫乱|変態|近親相姦|人妻)(?:[\s._-]|$)`),
+		// Porn studios / sites
+		compile(`(?i)(?:^|[\s._-])(Brazzers|BangBros|RealityKings|Nubiles|MetArt|Hegre|FakeTaxi|Blacked|Tushy|Vixen|Deeper|AllGirlMassage|MomsBangTeens|BadDaddyPOV|PornFidelity|SexMex|NewSensations|LegalPorno|PornWorld|WhenGirlsPlay|DigitalPlayground|NaughtyAmerica|Babes\.com|MoFos|TeamSkeet|Perv|FTVGirls|Karups|ATKGirlfriends|GirlsWay|HardX|EvilAngel|JulesJordan|Milfy|FiLF|PublicPickups|OldGoesYoung|FacialAbuse|WhiteTeensBlackCocks|MuchaSexo|PrivateSociety|ALSScan|OnlyFans)[\s._-]`),
+		// Explicit content keywords
+		compile(`(?i)(?:^|[\s._-])(XXX|porn|hentai|jav|erotic[ao]?|gangbang|creampie|blowjob|handjob|deepthroat|bukkake|BDSM|femdom|cuckold|futanari|ahegao|orgasm|masturbat|dildo|vibrator|anal\.?sex|oral\.?sex)(?:[\s._-]|$)`),
+		// Chinese/Japanese adult indicators
+		compile(`(?:骚|淫|肏|屄|鸡巴|阴茎|阴道|做爱|口交|肛交|中出|颜射|潮吹|痴女|素人|熟女|巨乳|爆乳|无码|有码|抽插|啪啪|约炮|嫩穴|荡妇|淫妻|绿帽)`),
+		// Adult site watermarks
+		compile(`(?i)(?:sex8\.cc|91porn|pornhub|xvideos|xhamster|xnxx|javbus|javlib|avgle|18p2p|hjd2048|69av|theporn|selang|色狼网|性吧)`),
+		// Online courses / tutorials (not media)
+		compile(`(?i)(?:^|[\s._-])(Udemy|Coursera|Masterclass|Tutorial|Bootcamp|Course|Certification|Learn\s+\w+\s+in|Complete\s+Guide|from\s+Zero\s+to\s+Hero)(?:[\s._-]|$)`),
+	}
 )
 
 func Classify(name string, files []File) Category {
@@ -142,10 +160,29 @@ func Classify(name string, files []File) Category {
 	return CategoryUnknown
 }
 
+// IsAdult returns true if the torrent name matches adult content patterns.
+// Anime releases are excluded since they share some vocabulary.
+func IsAdult(name string) bool {
+	if IsAnime(name) {
+		return false
+	}
+	for _, p := range adultPatterns {
+		if p.MatchString(name) {
+			return true
+		}
+	}
+	return false
+}
+
 // IsJunk returns true if the torrent is clearly not media content.
 // It checks both the torrent name and file extensions.
 // This should be called BEFORE Classify to avoid wasting work.
 func IsJunk(name string, files []File) bool {
+	// Adult content detection
+	if IsAdult(name) {
+		return true
+	}
+
 	// Name-based rejection: strong software/game signals
 	for _, p := range junkNamePatterns {
 		if p.MatchString(name) {
@@ -279,6 +316,7 @@ func IsTV(name string) bool {
 		"complete series",
 		"complete season",
 		"season 1", "season 2", "season 3",
+		"temporada", "temp.", "cap.",
 	}
 
 	for _, kw := range tvKeywords {

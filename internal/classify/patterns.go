@@ -11,10 +11,12 @@ func compile(s string) *regexp.Regexp {
 
 var (
 	seasonEpisodePatterns = []*regexp.Regexp{
-		compile(`S(\d{1,2})E(\d{1,2})(?:-E?(\d{1,2}))?`),
-		compile(`S(\d{1,2})\s+E(\d{1,2})`),
+		compile(`S(\d{1,2})E(\d{1,3})(?:-E?(\d{1,3}))?`),
+		compile(`S(\d{1,2})\s+E(\d{1,3})`),
 		compile(`(\d{1,2})x(\d{2,3})(?:-(\d{2,3}))?`),
-		compile(`Season[\s._]?(\d{1,2})[\s._-]+Episode[\s._]?(\d{1,2})`),
+		compile(`Season[\s._]?(\d{1,2})[\s._-]+Episode[\s._]?(\d{1,3})`),
+		// Spanish TV: Temp.N Cap.NNN, Temporada N
+		compile(`Temp(?:orada)?[\s._]?(\d{1,2})[\s._-]*(?:Cap[\s._]?(\d{1,3}))?`),
 		compile(`Season[\s._]?(\d{1,2})(?:[\s._-]|$)`),
 		compile(`S(\d{1,2})(?:[\s._-]Complete)?(?:[\s._-]|$)`),
 	}
@@ -22,6 +24,8 @@ var (
 	episodeOnlyPatterns = []*regexp.Regexp{
 		compile(`Episode[\s._]?(\d{1,3})`),
 		compile(`[\s._-]E(\d{1,3})(?:[\s._-]|$)`),
+		// Spanish: Cap.NNN standalone (no Temp prefix)
+		compile(`Cap[\s._]?(\d{1,3})(?:[\s._-]|$)`),
 	}
 
 	yearInParensPattern = compile(`\((\d{4})\)`)
@@ -93,6 +97,11 @@ var (
 
 	remuxPattern = compile(`[\s._-](REMUX|Remux)(?:[\s._-]|$)`)
 
+	// Site watermark prefixes: "www.Site.org - " or "www.Site.com   -   "
+	siteWatermarkPattern = regexp.MustCompile(`^(?i)(?:www\.)\S+\.\S+\s+[-–—]\s+`)
+	// Site@prefix@ watermarks: "site@prefix@" at start of name
+	siteAtWatermarkPattern = regexp.MustCompile(`^[^\s@]+@[^\s@]+@`)
+
 	groupPattern = compile(`[\s._-]([A-Za-z][A-Za-z0-9]{1,19})$`)
 
 	animeSubGroupPattern = compile(`^\[([^\]]+)\]`)
@@ -109,11 +118,14 @@ var (
 	}
 
 	tvIndicators = []*regexp.Regexp{
-		compile(`(?i)S\d{1,2}E\d{1,2}`),
+		compile(`(?i)S\d{1,2}E\d{1,3}`),
 		compile(`(?i)Season[\s._]?\d{1,2}`),
 		compile(`(?i)Complete[\s._-]?Series`),
 		compile(`(?i)\d{1,2}x\d{2,3}`),
 		compile(`(?i)Episode[\s._]?\d{1,3}`),
+		// Spanish TV patterns
+		compile(`(?i)Temp(?:orada)?[\s._]?\d{1,2}`),
+		compile(`(?i)Cap[\s._]?\d{1,3}`),
 	}
 
 	movieIndicators = []*regexp.Regexp{
@@ -121,7 +133,7 @@ var (
 		compile(`(?i)(?:480p|720p|1080p|2160p|4K|UHD).*tt\d{7,9}`),
 	}
 
-	titleCleanPattern = compile(`(?i)[\s._-]+(?:480p|720p|1080p|1080i|2160p|4k|uhd|fhd|sd|bluray|blu-?ray|web-?dl|webdl|webrip|hdtv|dvdrip|bdrip|brrip|brip|bdremux|remux|h\.?264|h\.?265|x264|x265|hevc|av1|xvid|divx|mpeg-?2|aac|ac-?3|dts-?hd|dts-?ma|dts|ddp5\.?1|dd5\.?1|dd|atmos|truehd|hdr10\+|hdr10|hdr|dv|dolby|nf|amzn|hmax|dsnp|atvp|dts[\s._-]?x|dts[\s._-]?hd[\s._-]?ma|dolby[\s._-]?vision|dual[\s._-]?audio)[\s._\w\-\+\~]*$`)
+	titleCleanPattern = compile(`(?i)[\s._-]+(?:480p|720p|1080p|1080i|2160p|4k|uhd|fhd|sd|bluray|blu-?ray|web-?dl|webdl|webrip|web|webmux|hdtv|dvdrip|bdrip|brrip|brip|bdremux|remux|h\.?264|h\.?265|x264|x265|hevc|av1|xvid|divx|mpeg-?2|aac|ac-?3|dts-?hd|dts-?ma|dts|ddp5\.?1|dd5\.?1|dd|atmos|truehd|hdr10\+|hdr10|hdr|dv|dolby|nf|amzn|hmax|dsnp|atvp|pmtp|cr|bili|dts[\s._-]?x|dts[\s._-]?hd[\s._-]?ma|dolby[\s._-]?vision|dual[\s._-]?audio|multi|repack|proper|extended|unrated|directors?[\s._-]?cut|open[\s._-]?matte|imax|theatrical|internal|ita|eng|fra|fre|french|spa|spanish|ger|german|rus|russian|kor|korean|jpn|japanese|chi|chinese|hindi|por|portuguese|dub|dubbed|subbed|subs?|msubs|multi[\s._-]?subs?|vostfr|castellano|dual|10bit|8bit|flac|lpcm|eac3|ddp|aac2\.0|h\.?264|h\.?265)[\s._\w\-\+\~]*$`)
 )
 
 func extractSeasonEpisode(name string) (season, episode int, found bool) {
