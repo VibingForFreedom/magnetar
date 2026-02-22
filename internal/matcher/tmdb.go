@@ -29,10 +29,16 @@ type TMDBFindResult struct {
 
 func NewTMDBClient(apiKey string) *TMDBClient {
 	return &TMDBClient{
-		apiKey: apiKey,
-		client: &http.Client{Timeout: 10 * time.Second},
-		limiter: rate.NewLimiter(4, 4), // 40 req/10s
+		apiKey:  apiKey,
+		client:  &http.Client{Timeout: 10 * time.Second},
+		limiter: rate.NewLimiter(4, 4),
 	}
+}
+
+// SetRate adjusts the TMDB rate limiter dynamically.
+func (c *TMDBClient) SetRate(rps float64, burst int) {
+	c.limiter.SetLimit(rate.Limit(rps))
+	c.limiter.SetBurst(burst)
 }
 
 func (c *TMDBClient) SearchMovie(ctx context.Context, title string, year int) (tmdbID int, releaseYear int, err error) {

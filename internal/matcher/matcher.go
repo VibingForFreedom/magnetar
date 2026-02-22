@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -28,6 +29,32 @@ func backoffDuration(attempts int) time.Duration {
 		return backoffSchedule[len(backoffSchedule)-1]
 	}
 	return backoffSchedule[attempts]
+}
+
+// Scaling tiers: backlog size → TMDB rate + worker count.
+// TMDB allows ~40 req/s; each match uses 1-3 API calls,
+// so workers * avg_calls <= rate limit.
+type scaleTier struct {
+	minBacklog int
+	rps        float64
+	burst      int
+	workers    int
+}
+
+var scaleTiers = []scaleTier{
+	{minBacklog: 5000, rps: 35, burst: 35, workers: 10},
+	{minBacklog: 1000, rps: 20, burst: 20, workers: 6},
+	{minBacklog: 100, rps: 10, burst: 10, workers: 4},
+	{minBacklog: 0, rps: 4, burst: 4, workers: 1},
+}
+
+func tierForBacklog(backlog int) scaleTier {
+	for _, t := range scaleTiers {
+		if backlog >= t.minBacklog {
+			return t
+		}
+	}
+	return scaleTiers[len(scaleTiers)-1]
 }
 
 type Matcher struct {
@@ -125,29 +152,8 @@ func (m *Matcher) RunBatch(ctx context.Context) (int, error) {
 		return 0, nil
 	}
 
-	for _, t := range torrents {
-		select {
-		case <-ctx.Done():
-			return 0, ctx.Err()
-		default:
-		}
-
-		m.metrics.MatchAttempts.Add(1)
-		result := m.matchOne(ctx, t)
-		if result.Status == store.MatchMatched {
-			m.metrics.MatchSuccesses.Add(1)
-			m.metrics.RecordMatch(1)
-		} else {
-			m.metrics.MatchFailures.Add(1)
-		}
-		if err := m.store.UpdateMatchResult(ctx, t.InfoHash, result); err != nil {
-			m.logger.Error("updating match result",
-				"info_hash", t.InfoHashHex(),
-				"error", err,
-			)
-		}
-	}
-
+	m.scaleTMDB(len(torrents))
+	m.processWithWorkers(ctx, torrents)
 	return len(torrents), nil
 }
 
@@ -155,7 +161,27 @@ func (m *Matcher) processBatch(ctx context.Context) {
 	if m.paused.Load() {
 		return
 	}
-	torrents, err := m.store.FetchUnmatched(ctx, m.cfg.BatchSize)
+
+	// Check total backlog to determine scaling tier
+	backlog := m.cfg.BatchSize // fallback: assume batch-sized backlog
+	if stats, err := m.store.Stats(ctx); err == nil {
+		backlog = int(stats.Unmatched + stats.Failed)
+	}
+
+	tier := m.scaleTMDB(backlog)
+
+	// Fetch a batch sized to what we can process this tick.
+	// Each match uses ~2 TMDB API calls on average, so at R rps
+	// over the tick interval we can match about R*interval/2 torrents.
+	fetchSize := int(tier.rps*m.cfg.Interval.Seconds()) / 2
+	if fetchSize > m.cfg.BatchSize {
+		fetchSize = m.cfg.BatchSize
+	}
+	if fetchSize < 1 {
+		fetchSize = 1
+	}
+
+	torrents, err := m.store.FetchUnmatched(ctx, fetchSize)
 	if err != nil {
 		m.logger.Error("fetching unmatched torrents", "error", err)
 		return
@@ -165,32 +191,71 @@ func (m *Matcher) processBatch(ctx context.Context) {
 		return
 	}
 
-	m.logger.Debug("processing batch", "count", len(torrents))
+	m.processWithWorkers(ctx, torrents)
+}
 
-	for _, t := range torrents {
-		select {
-		case <-ctx.Done():
-			return
-		case <-m.stopped:
-			return
-		default:
-		}
-
-		m.metrics.MatchAttempts.Add(1)
-		result := m.matchOne(ctx, t)
-		if result.Status == store.MatchMatched {
-			m.metrics.MatchSuccesses.Add(1)
-			m.metrics.RecordMatch(1)
-		} else {
-			m.metrics.MatchFailures.Add(1)
-		}
-		if err := m.store.UpdateMatchResult(ctx, t.InfoHash, result); err != nil {
-			m.logger.Error("updating match result",
-				"info_hash", t.InfoHashHex(),
-				"error", err,
-			)
-		}
+// scaleTMDB adjusts the TMDB rate limiter and returns the worker count
+// based on the current backlog size.
+func (m *Matcher) scaleTMDB(backlog int) scaleTier {
+	tier := tierForBacklog(backlog)
+	if m.tmdb != nil {
+		m.tmdb.SetRate(tier.rps, tier.burst)
 	}
+	m.logger.Info("matcher scaling",
+		"backlog", backlog,
+		"workers", tier.workers,
+		"tmdb_rps", tier.rps,
+	)
+	return tier
+}
+
+// processWithWorkers fans out torrent matching across a dynamic worker pool.
+// The TMDB rate limiter is shared across all workers, so they naturally throttle.
+func (m *Matcher) processWithWorkers(ctx context.Context, torrents []*store.Torrent) {
+	tier := tierForBacklog(len(torrents))
+	workers := tier.workers
+	if workers > len(torrents) {
+		workers = len(torrents)
+	}
+
+	work := make(chan *store.Torrent, len(torrents))
+	for _, t := range torrents {
+		work <- t
+	}
+	close(work)
+
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for range workers {
+		go func() {
+			defer wg.Done()
+			for t := range work {
+				select {
+				case <-ctx.Done():
+					return
+				case <-m.stopped:
+					return
+				default:
+				}
+
+				m.metrics.MatchAttempts.Add(1)
+				result := m.matchOne(ctx, t)
+				if result.Status == store.MatchMatched {
+					m.metrics.MatchSuccesses.Add(1)
+					m.metrics.RecordMatch(1)
+				} else {
+					m.metrics.MatchFailures.Add(1)
+				}
+				if err := m.store.UpdateMatchResult(ctx, t.InfoHash, result); err != nil {
+					m.logger.Error("updating match result",
+						"info_hash", t.InfoHashHex(),
+						"error", err,
+					)
+				}
+			}
+		}()
+	}
+	wg.Wait()
 }
 
 func (m *Matcher) matchOne(ctx context.Context, t *store.Torrent) store.MatchResult {
