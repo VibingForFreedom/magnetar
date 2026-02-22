@@ -230,6 +230,7 @@ func runServe(_ *flag.FlagSet) error { //nolint:unparam
 			"batch_size", cfg.MatchBatchSize,
 		)
 		apiServer.SetMatcher(metaMatcher)
+		apiServer.SetMatcherTrigger(metaMatcher)
 	}
 
 	select {

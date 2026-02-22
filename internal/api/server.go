@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"encoding/xml"
 	"log"
@@ -28,12 +29,18 @@ type Reconfigurable interface {
 	Reconfigure()
 }
 
+// Triggerable represents a component that can run a batch on demand.
+type Triggerable interface {
+	RunBatch(ctx context.Context) (int, error)
+}
+
 type Server struct {
 	store          store.Store
 	cfg            *config.Config
 	metrics        *metrics.Metrics
 	crawler        Pausable
 	matcher        Pausable
+	matcherTrigger Triggerable
 	trackerScraper Reconfigurable
 	start          time.Time
 	logger         *log.Logger
@@ -59,6 +66,11 @@ func (s *Server) SetMatcher(m Pausable) {
 	s.matcher = m
 }
 
+// SetMatcherTrigger sets the matcher trigger reference for on-demand batch runs.
+func (s *Server) SetMatcherTrigger(t Triggerable) {
+	s.matcherTrigger = t
+}
+
 // SetTrackerScraper sets the tracker scraper reference for runtime reconfiguration.
 func (s *Server) SetTrackerScraper(t Reconfigurable) {
 	s.trackerScraper = t
@@ -79,6 +91,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/crawler/toggle", s.handleCrawlerToggle)
 	mux.HandleFunc("/api/matcher/toggle", s.handleMatcherToggle)
 	mux.HandleFunc("/api/matcher/rematch", s.handleRematch)
+	mux.HandleFunc("/api/matcher/recent", s.handleMatcherRecent)
+	mux.HandleFunc("/api/matcher/failures", s.handleMatcherFailures)
+	mux.HandleFunc("/api/matcher/trigger", s.handleMatcherTrigger)
 	mux.Handle("/", web.Handler())
 
 	return s.withLogging(s.withAuth(mux))

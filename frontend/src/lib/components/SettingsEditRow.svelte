@@ -7,14 +7,16 @@
 		settingKey: string;
 		value: string | number | boolean;
 		type?: 'text' | 'number' | 'boolean' | 'textarea';
+		hint?: string;
 		onUpdate?: (newValue: string) => void;
 	}
 
-	let { label, settingKey, value, type = 'text', onUpdate }: Props = $props();
+	let { label, settingKey, value, type = 'text', hint, onUpdate }: Props = $props();
 
 	let editValue = $state(String(value));
 	let saving = $state(false);
 	let error = $state<string | null>(null);
+	let restartNeeded = $state(false);
 
 	let dirty = $derived(editValue !== String(value));
 
@@ -22,8 +24,12 @@
 		if (saving) return;
 		saving = true;
 		error = null;
+		restartNeeded = false;
 		try {
-			await putSetting(settingKey, editValue);
+			const res = await putSetting(settingKey, editValue);
+			if (res.requires_restart) {
+				restartNeeded = true;
+			}
 			onUpdate?.(editValue);
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Save failed';
@@ -36,9 +42,13 @@
 		const newVal = value === true ? 'false' : 'true';
 		saving = true;
 		error = null;
+		restartNeeded = false;
 		try {
-			await putSetting(settingKey, newVal);
+			const res = await putSetting(settingKey, newVal);
 			editValue = newVal;
+			if (res.requires_restart) {
+				restartNeeded = true;
+			}
 			onUpdate?.(newVal);
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Save failed';
@@ -50,8 +60,16 @@
 
 {#if type === 'boolean'}
 	<div class="flex items-center justify-between py-2">
-		<span class="text-sm text-text-secondary">{label}</span>
 		<div class="flex items-center gap-2">
+			<span class="text-sm text-text-secondary">{label}</span>
+			{#if hint}
+				<span class="text-xs text-text-secondary/60">{hint}</span>
+			{/if}
+		</div>
+		<div class="flex items-center gap-2">
+			{#if restartNeeded}
+				<span class="text-xs text-accent-amber">Restart required</span>
+			{/if}
 			{#if error}
 				<span class="text-xs text-accent-red">{error}</span>
 			{/if}
@@ -75,10 +93,20 @@
 {:else if type === 'textarea'}
 	<div class="space-y-2 py-2">
 		<div class="flex items-center justify-between">
-			<span class="text-sm text-text-secondary">{label}</span>
-			{#if error}
-				<span class="text-xs text-accent-red">{error}</span>
-			{/if}
+			<div class="flex items-center gap-2">
+				<span class="text-sm text-text-secondary">{label}</span>
+				{#if hint}
+					<span class="text-xs text-text-secondary/60">{hint}</span>
+				{/if}
+			</div>
+			<div class="flex items-center gap-2">
+				{#if restartNeeded}
+					<span class="text-xs text-accent-amber">Restart required</span>
+				{/if}
+				{#if error}
+					<span class="text-xs text-accent-red">{error}</span>
+				{/if}
+			</div>
 		</div>
 		<textarea
 			bind:value={editValue}
@@ -103,8 +131,16 @@
 	</div>
 {:else}
 	<div class="flex items-center justify-between py-2">
-		<span class="text-sm text-text-secondary">{label}</span>
 		<div class="flex items-center gap-2">
+			<span class="text-sm text-text-secondary">{label}</span>
+			{#if hint}
+				<span class="text-xs text-text-secondary/60">{hint}</span>
+			{/if}
+		</div>
+		<div class="flex items-center gap-2">
+			{#if restartNeeded}
+				<span class="text-xs text-accent-amber">Restart required</span>
+			{/if}
 			{#if error}
 				<span class="text-xs text-accent-red">{error}</span>
 			{/if}

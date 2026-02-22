@@ -16,6 +16,7 @@ const (
 	KeyMatchInterval    = "match_interval"
 	KeyMatchMaxAttempts = "match_max_attempts"
 	KeyCrawlRate        = "crawl_rate"
+	KeyCrawlWorkers     = "crawl_workers"
 	KeyLogLevel         = "log_level"
 	KeyAnimeDBEnabled   = "animedb_enabled"
 )
@@ -29,6 +30,7 @@ var EditableKeys = []string{
 	KeyMatchInterval,
 	KeyMatchMaxAttempts,
 	KeyCrawlRate,
+	KeyCrawlWorkers,
 	KeyLogLevel,
 	KeyAnimeDBEnabled,
 }
@@ -96,6 +98,10 @@ func (c *Config) ApplySetting(key, value string) {
 	case KeyCrawlRate:
 		if n, err := strconv.Atoi(value); err == nil && n >= 0 {
 			c.CrawlRate = n
+		}
+	case KeyCrawlWorkers:
+		if n, err := strconv.Atoi(value); err == nil && n >= 1 && n <= 4 {
+			c.CrawlWorkers = n
 		}
 	case KeyLogLevel:
 		valid := map[string]bool{"debug": true, "info": true, "warn": true, "error": true}

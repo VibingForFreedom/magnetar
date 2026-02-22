@@ -629,6 +629,51 @@ func (s *MariaDBStore) UpdateCategory(ctx context.Context, infoHash []byte, cate
 	return nil
 }
 
+func (s *MariaDBStore) ListByMatchStatus(ctx context.Context, status MatchStatus, limit, offset int) (*SearchResult, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	var total int
+	if err := s.db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM torrents WHERE match_status = ?", status,
+	).Scan(&total); err != nil {
+		return nil, fmt.Errorf("counting by match status: %w", err)
+	}
+
+	query := `SELECT ` + torrentSelectColumns + ` FROM torrents WHERE match_status = ? ORDER BY updated_at DESC LIMIT ? OFFSET ?`
+
+	rows, err := s.db.QueryContext(ctx, query, status, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("listing by match status: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var torrents []*Torrent
+	for rows.Next() {
+		t, err := scanRow(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scanning torrent: %w", err)
+		}
+		torrents = append(torrents, t)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating rows: %w", err)
+	}
+
+	return &SearchResult{
+		Torrents: torrents,
+		Total:    total,
+	}, nil
+}
+
 func (s *MariaDBStore) ResetFailedMatches(ctx context.Context) (int64, error) {
 	result, err := s.db.ExecContext(ctx,
 		`UPDATE torrents SET match_status = 0, match_attempts = 0, match_after = 0, updated_at = ? WHERE match_status = 2`,

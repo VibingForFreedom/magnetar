@@ -150,5 +150,10 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 		s.trackerScraper.Reconfigure()
 	}
 
-	s.writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "key": req.Key})
+	requiresRestart := req.Key == config.KeyCrawlWorkers
+	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status":           "ok",
+		"key":              req.Key,
+		"requires_restart": requiresRestart,
+	})
 }

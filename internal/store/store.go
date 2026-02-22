@@ -374,6 +374,7 @@ type Store interface {
 	UpdateMatchResult(ctx context.Context, infoHash []byte, m MatchResult) error
 	UpdateCategory(ctx context.Context, infoHash []byte, category Category) error
 	ResetFailedMatches(ctx context.Context) (int64, error)
+	ListByMatchStatus(ctx context.Context, status MatchStatus, limit, offset int) (*SearchResult, error)
 	Stats(ctx context.Context) (*DBStats, error)
 	GetSetting(ctx context.Context, key string) (string, error)
 	SetSetting(ctx context.Context, key, value string) error

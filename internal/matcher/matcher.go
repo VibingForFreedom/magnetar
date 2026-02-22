@@ -2,6 +2,7 @@ package matcher
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"sync/atomic"
@@ -111,6 +112,43 @@ func (m *Matcher) Stop() {
 	default:
 		close(m.stopped)
 	}
+}
+
+// RunBatch runs one matching batch immediately, returning the number of torrents processed.
+func (m *Matcher) RunBatch(ctx context.Context) (int, error) {
+	torrents, err := m.store.FetchUnmatched(ctx, m.cfg.BatchSize)
+	if err != nil {
+		return 0, fmt.Errorf("fetching unmatched torrents: %w", err)
+	}
+
+	if len(torrents) == 0 {
+		return 0, nil
+	}
+
+	for _, t := range torrents {
+		select {
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		default:
+		}
+
+		m.metrics.MatchAttempts.Add(1)
+		result := m.matchOne(ctx, t)
+		if result.Status == store.MatchMatched {
+			m.metrics.MatchSuccesses.Add(1)
+			m.metrics.RecordMatch(1)
+		} else {
+			m.metrics.MatchFailures.Add(1)
+		}
+		if err := m.store.UpdateMatchResult(ctx, t.InfoHash, result); err != nil {
+			m.logger.Error("updating match result",
+				"info_hash", t.InfoHashHex(),
+				"error", err,
+			)
+		}
+	}
+
+	return len(torrents), nil
 }
 
 func (m *Matcher) processBatch(ctx context.Context) {

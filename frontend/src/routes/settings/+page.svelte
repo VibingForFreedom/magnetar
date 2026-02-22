@@ -67,6 +67,8 @@
 			} else if (section === 'crawler') {
 				if (field === 'rate') {
 					settings = { ...settings, crawler: { ...settings.crawler, rate: Number(newValue) } };
+				} else if (field === 'workers') {
+					settings = { ...settings, crawler: { ...settings.crawler, workers: Number(newValue) } };
 				}
 			} else if (section === 'general') {
 				if (field === 'log_level') {
@@ -129,7 +131,14 @@
 						</div>
 					</div>
 				{/if}
-				<SettingsRow label="Workers" value={settings.crawler.workers} />
+				<SettingsEditRow
+					label="Workers"
+					settingKey="crawl_workers"
+					value={settings.crawler.workers}
+					type="number"
+					hint="(max 4, restart required)"
+					onUpdate={onSettingUpdate('crawler', 'workers')}
+				/>
 				<SettingsRow label="DHT Port" value={settings.crawler.port} />
 				<SettingsEditRow
 					label="Rate"

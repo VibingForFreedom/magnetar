@@ -25,6 +25,7 @@ export interface Stats {
 	last_crawl: number;
 	uptime: number;
 	start_time: string;
+	matcher_paused: boolean;
 	metrics?: MetricsSnapshot;
 }
 
@@ -99,6 +100,33 @@ export interface Settings {
 	};
 }
 
+export interface MatcherEntry {
+	info_hash: string;
+	name: string;
+	size: number;
+	category: string;
+	quality: string;
+	imdb_id?: string;
+	tmdb_id?: number;
+	tvdb_id?: number;
+	anilist_id?: number;
+	kitsu_id?: number;
+	media_year?: number;
+	match_status: string;
+	match_attempts: number;
+	match_after: number;
+	seeders: number;
+	leechers: number;
+	updated_at: number;
+}
+
+export interface MatcherListResponse {
+	results: MatcherEntry[];
+	total: number;
+	page: number;
+	limit: number;
+}
+
 export interface ToggleResponse {
 	component: string;
 	paused: boolean;
@@ -163,7 +191,7 @@ export async function fetchSettings(): Promise<Settings> {
 	return fetchJSON('/api/settings');
 }
 
-export async function putSetting(key: string, value: string): Promise<{ status: string; key: string }> {
+export async function putSetting(key: string, value: string): Promise<{ status: string; key: string; requires_restart: boolean }> {
 	return putJSON('/api/settings', { key, value });
 }
 
@@ -173,6 +201,22 @@ export async function toggleCrawler(paused: boolean): Promise<ToggleResponse> {
 
 export async function toggleMatcher(paused: boolean): Promise<ToggleResponse> {
 	return postJSON('/api/matcher/toggle', { paused });
+}
+
+export async function fetchMatcherRecent(page = 1, limit = 20): Promise<MatcherListResponse> {
+	return fetchJSON(`/api/matcher/recent?page=${page}&limit=${limit}`);
+}
+
+export async function fetchMatcherFailures(page = 1, limit = 20): Promise<MatcherListResponse> {
+	return fetchJSON(`/api/matcher/failures?page=${page}&limit=${limit}`);
+}
+
+export async function triggerMatcher(): Promise<{ triggered: boolean; batch_size: number }> {
+	return postJSON('/api/matcher/trigger', {});
+}
+
+export async function rematch(): Promise<{ reset: number }> {
+	return postJSON('/api/matcher/rematch', {});
 }
 
 export function connectSSE(onMessage: (snap: MetricsSnapshot) => void): EventSource {

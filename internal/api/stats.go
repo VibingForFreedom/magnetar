@@ -23,9 +23,10 @@ type healthResponse struct {
 
 type statsResponse struct {
 	dbStatsSummary
-	Uptime    int64            `json:"uptime"`
-	StartTime string           `json:"start_time"`
-	Metrics   *metrics.Snapshot `json:"metrics,omitempty"`
+	Uptime        int64             `json:"uptime"`
+	StartTime     string            `json:"start_time"`
+	MatcherPaused bool              `json:"matcher_paused"`
+	Metrics       *metrics.Snapshot `json:"metrics,omitempty"`
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -68,8 +69,9 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 			DBSize:        stats.DBSize,
 			LastCrawl:     stats.LastCrawl,
 		},
-		Uptime:    uptime,
-		StartTime: s.start.UTC().Format(time.RFC3339),
+		Uptime:        uptime,
+		StartTime:     s.start.UTC().Format(time.RFC3339),
+		MatcherPaused: s.matcher != nil && s.matcher.IsPaused(),
 	}
 
 	if s.metrics != nil {
