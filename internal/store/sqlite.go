@@ -170,6 +170,7 @@ func (s *SQLiteStore) Migrate(ctx context.Context) error {
 	CREATE INDEX IF NOT EXISTS idx_category   ON torrents(category, quality, media_year);
 	CREATE INDEX IF NOT EXISTS idx_discovered ON torrents(discovered_at DESC);
 	CREATE INDEX IF NOT EXISTS idx_match_queue ON torrents(match_status, match_after) WHERE match_status != 1;
+	CREATE INDEX IF NOT EXISTS idx_scrape_stale ON torrents(match_status, updated_at) WHERE match_status = 1;
 
 	CREATE TABLE IF NOT EXISTS rejected_hashes (
 		info_hash    BLOB PRIMARY KEY,
@@ -995,6 +996,51 @@ func (s *SQLiteStore) Analyze(ctx context.Context) error {
 		return fmt.Errorf("analyze: %w", err)
 	}
 	return nil
+}
+
+func (s *SQLiteStore) ListRecentlyUpdated(ctx context.Context, limit int) ([]*Torrent, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 200 {
+		limit = 200
+	}
+
+	query := `SELECT ` + torrentSelectColumns + ` FROM torrents WHERE updated_at > 0 AND match_status = ? ORDER BY updated_at DESC LIMIT ?`
+	rows, err := s.reader.QueryContext(ctx, query, MatchMatched, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list recently updated: %w", err)
+	}
+	defer rows.Close()
+
+	var torrents []*Torrent
+	for rows.Next() {
+		t, err := scanRow(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scanning row: %w", err)
+		}
+		torrents = append(torrents, t)
+	}
+	return torrents, rows.Err()
+}
+
+func (s *SQLiteStore) ListAllMatched(ctx context.Context) ([]*Torrent, error) {
+	query := `SELECT ` + torrentSelectColumns + ` FROM torrents WHERE match_status = ? ORDER BY updated_at ASC`
+	rows, err := s.reader.QueryContext(ctx, query, MatchMatched)
+	if err != nil {
+		return nil, fmt.Errorf("list stale for scrape: %w", err)
+	}
+	defer rows.Close()
+
+	var torrents []*Torrent
+	for rows.Next() {
+		t, err := scanRow(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scanning row: %w", err)
+		}
+		torrents = append(torrents, t)
+	}
+	return torrents, rows.Err()
 }
 
 func (s *SQLiteStore) BulkUpdateSeedersLeechers(ctx context.Context, updates []SeedersLeechersUpdate) error {

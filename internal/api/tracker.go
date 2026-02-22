@@ -4,17 +4,68 @@ import (
 	"context"
 	"net/http"
 	"strconv"
-	"time"
+	"sync/atomic"
 
 	"github.com/magnetar/magnetar/internal/store"
+	"github.com/magnetar/magnetar/internal/tracker"
 )
+
+type trackerStatsResponse struct {
+	Trackers        []tracker.TrackerInfo `json:"trackers"`
+	RecentlyUpdated []*store.Torrent     `json:"recently_updated"`
+}
+
+func (s *Server) handleTrackerStats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, http.StatusMethodNotAllowed, "GET only")
+		return
+	}
+
+	limit := 20
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+	if limit > 200 {
+		limit = 200
+	}
+
+	var trackers []tracker.TrackerInfo
+	if s.trackerScraper != nil {
+		trackers = s.trackerScraper.TrackerStats()
+	}
+	if trackers == nil {
+		trackers = []tracker.TrackerInfo{}
+	}
+
+	updated, err := s.store.ListRecentlyUpdated(r.Context(), limit)
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, "failed to list recently updated")
+		return
+	}
+	if updated == nil {
+		updated = []*store.Torrent{}
+	}
+
+	s.writeJSON(w, http.StatusOK, trackerStatsResponse{
+		Trackers:        trackers,
+		RecentlyUpdated: updated,
+	})
+}
 
 type scrapeResponse struct {
 	Scraped int    `json:"scraped"`
 	Updated int    `json:"updated"`
 	Failed  int    `json:"failed"`
 	Elapsed string `json:"elapsed"`
+	Total   int    `json:"total"`
 }
+
+// scrapeRunning guards against concurrent full-DB scrapes.
+var scrapeRunning atomic.Bool
+
+const scrapeBatchSize = 500
 
 func (s *Server) handleTrackerScrape(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -27,32 +78,41 @@ func (s *Server) handleTrackerScrape(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limit := 50
-	if raw := r.URL.Query().Get("limit"); raw != "" {
-		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
-			limit = parsed
-		}
-	}
-	if limit > 500 {
-		limit = 500
-	}
-
-	result, err := s.store.ListRecent(r.Context(), store.SearchOpts{Limit: limit})
-	if err != nil {
-		s.writeError(w, http.StatusInternalServerError, "failed to list torrents")
+	if !scrapeRunning.CompareAndSwap(false, true) {
+		s.writeError(w, http.StatusConflict, "scrape already in progress")
 		return
 	}
 
-	if len(result.Torrents) == 0 {
+	torrents, err := s.store.ListAllMatched(r.Context())
+	if err != nil {
+		scrapeRunning.Store(false)
+		s.writeError(w, http.StatusInternalServerError, "failed to list matched torrents")
+		return
+	}
+
+	total := len(torrents)
+	if total == 0 {
+		scrapeRunning.Store(false)
 		s.writeJSON(w, http.StatusOK, scrapeResponse{})
 		return
 	}
 
-	start := time.Now()
-	resp := s.scrapeAll(r.Context(), result.Torrents)
-	resp.Elapsed = time.Since(start).Truncate(time.Millisecond).String()
+	// Return immediately — scrape runs in background
+	s.writeJSON(w, http.StatusAccepted, scrapeResponse{Total: total})
 
-	s.writeJSON(w, http.StatusOK, resp)
+	go func() {
+		defer scrapeRunning.Store(false)
+
+		ctx := context.Background()
+		for i := 0; i < len(torrents); i += scrapeBatchSize {
+			end := i + scrapeBatchSize
+			if end > len(torrents) {
+				end = len(torrents)
+			}
+			s.scrapeAll(ctx, torrents[i:end])
+		}
+		s.logger.Printf("full tracker scrape complete: %d matched torrents", total)
+	}()
 }
 
 func (s *Server) scrapeAll(ctx context.Context, torrents []*store.Torrent) scrapeResponse {

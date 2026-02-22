@@ -97,6 +97,7 @@ func (s *MariaDBStore) Migrate(ctx context.Context) error {
 		`CREATE INDEX idx_category ON torrents(category, quality, media_year)`,
 		`CREATE INDEX idx_discovered ON torrents(discovered_at)`,
 		`CREATE INDEX idx_match_queue ON torrents(match_status, match_after)`,
+		`CREATE INDEX idx_scrape_stale ON torrents(match_status, updated_at)`,
 		`CREATE TABLE IF NOT EXISTS rejected_hashes (
 			info_hash    BINARY(20) NOT NULL PRIMARY KEY,
 			rejected_at  BIGINT     NOT NULL
@@ -899,6 +900,51 @@ func (s *MariaDBStore) Analyze(ctx context.Context) error {
 		return fmt.Errorf("analyze table: %w", err)
 	}
 	return nil
+}
+
+func (s *MariaDBStore) ListRecentlyUpdated(ctx context.Context, limit int) ([]*Torrent, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 200 {
+		limit = 200
+	}
+
+	query := `SELECT ` + torrentSelectColumns + ` FROM torrents WHERE updated_at > 0 AND match_status = ? ORDER BY updated_at DESC LIMIT ?`
+	rows, err := s.db.QueryContext(ctx, query, MatchMatched, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list recently updated: %w", err)
+	}
+	defer rows.Close()
+
+	var torrents []*Torrent
+	for rows.Next() {
+		t, err := scanRow(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scanning row: %w", err)
+		}
+		torrents = append(torrents, t)
+	}
+	return torrents, rows.Err()
+}
+
+func (s *MariaDBStore) ListAllMatched(ctx context.Context) ([]*Torrent, error) {
+	query := `SELECT ` + torrentSelectColumns + ` FROM torrents WHERE match_status = ? ORDER BY updated_at ASC`
+	rows, err := s.db.QueryContext(ctx, query, MatchMatched)
+	if err != nil {
+		return nil, fmt.Errorf("list stale for scrape: %w", err)
+	}
+	defer rows.Close()
+
+	var torrents []*Torrent
+	for rows.Next() {
+		t, err := scanRow(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scanning row: %w", err)
+		}
+		torrents = append(torrents, t)
+	}
+	return torrents, rows.Err()
 }
 
 func (s *MariaDBStore) BulkUpdateSeedersLeechers(ctx context.Context, updates []SeedersLeechersUpdate) error {

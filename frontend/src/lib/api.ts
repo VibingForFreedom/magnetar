@@ -45,6 +45,20 @@ export interface TorrentResult {
 	seeders: number;
 	leechers: number;
 	discovered_at: number;
+	updated_at?: number;
+}
+
+export interface TrackerInfo {
+	host: string;
+	protocol: string;
+	batch_limit: number;
+	success_count: number;
+	initial_limit: number;
+}
+
+export interface TrackerStatsResponse {
+	trackers: TrackerInfo[];
+	recently_updated: TorrentResult[];
 }
 
 export interface SearchResponse {
@@ -258,11 +272,16 @@ export interface ScrapeResponse {
 	updated: number;
 	failed: number;
 	elapsed: string;
+	total: number;
 }
 
-export async function triggerTrackerScrape(limit?: number): Promise<ScrapeResponse> {
+export async function fetchTrackerStats(limit?: number): Promise<TrackerStatsResponse> {
 	const query = limit ? `?limit=${limit}` : '';
-	return postJSON(`/api/tracker/scrape${query}`, {});
+	return fetchJSON(`/api/tracker/stats${query}`);
+}
+
+export async function triggerTrackerScrape(): Promise<ScrapeResponse> {
+	return postJSON('/api/tracker/scrape', {});
 }
 
 export function connectSSE(onMessage: (snap: MetricsSnapshot) => void): EventSource {

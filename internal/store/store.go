@@ -385,6 +385,8 @@ type Store interface {
 	RejectedHashCount(ctx context.Context) (int64, error)
 	PurgeOldRejected(ctx context.Context, olderThan time.Duration) (int64, error)
 	PurgeJunkTorrents(ctx context.Context) (int64, error)
+	ListRecentlyUpdated(ctx context.Context, limit int) ([]*Torrent, error)
+	ListAllMatched(ctx context.Context) ([]*Torrent, error)
 	BulkUpdateSeedersLeechers(ctx context.Context, updates []SeedersLeechersUpdate) error
 	Migrate(ctx context.Context) error
 	Close() error

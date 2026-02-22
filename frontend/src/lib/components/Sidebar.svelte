@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
-	import { LayoutDashboard, Database, Target, Monitor, Settings, Magnet } from 'lucide-svelte';
+	import { LayoutDashboard, Database, Target, Radar, Monitor, Settings, Magnet } from 'lucide-svelte';
 
 	const links = [
 		{ href: '/' as const, label: 'Dashboard', icon: LayoutDashboard },
 		{ href: '/torrents' as const, label: 'Torrents', icon: Database },
 		{ href: '/matcher' as const, label: 'Matcher', icon: Target },
+		{ href: '/tracker' as const, label: 'Tracker', icon: Radar },
 		{ href: '/system' as const, label: 'System', icon: Monitor },
 		{ href: '/settings' as const, label: 'Settings', icon: Settings }
 	];

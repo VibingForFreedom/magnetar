@@ -105,6 +105,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/matcher/recent", s.handleMatcherRecent)
 	mux.HandleFunc("/api/matcher/failures", s.handleMatcherFailures)
 	mux.HandleFunc("/api/matcher/trigger", s.handleMatcherTrigger)
+	mux.HandleFunc("/api/tracker/stats", s.handleTrackerStats)
 	mux.HandleFunc("/api/tracker/scrape", s.handleTrackerScrape)
 	mux.Handle("/", web.Handler())
 
