@@ -226,6 +226,47 @@ func (c *TMDBClient) GetAlternativeTitles(ctx context.Context, mediaType string,
 	return titles, nil
 }
 
+// GetTranslations fetches all translated titles for a movie or TV show.
+// Returns titles from every language/region that has a translation on TMDB.
+func (c *TMDBClient) GetTranslations(ctx context.Context, mediaType string, tmdbID int) ([]string, error) {
+	var path string
+	switch mediaType {
+	case "movie":
+		path = fmt.Sprintf("/movie/%d/translations", tmdbID)
+	case "tv":
+		path = fmt.Sprintf("/tv/%d/translations", tmdbID)
+	default:
+		return nil, fmt.Errorf("unknown media type: %s", mediaType)
+	}
+
+	var resp struct {
+		Translations []struct {
+			Data struct {
+				Title string `json:"title"`
+				Name  string `json:"name"`
+			} `json:"data"`
+		} `json:"translations"`
+	}
+
+	if err := c.doGet(ctx, path, nil, &resp); err != nil {
+		return nil, fmt.Errorf("tmdb get translations: %w", err)
+	}
+
+	titles := make([]string, 0, len(resp.Translations))
+	for _, tr := range resp.Translations {
+		// Movies use "title", TV shows use "name"
+		t := tr.Data.Title
+		if t == "" {
+			t = tr.Data.Name
+		}
+		if t != "" {
+			titles = append(titles, t)
+		}
+	}
+
+	return titles, nil
+}
+
 func (c *TMDBClient) doGet(ctx context.Context, path string, params url.Values, dst interface{}) error {
 	if err := c.limiter.Wait(ctx); err != nil {
 		return fmt.Errorf("rate limiter: %w", err)

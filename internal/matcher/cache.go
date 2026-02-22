@@ -418,15 +418,30 @@ func (c *MatcherCache) SearchSeries(ctx context.Context, tvdb *TVDBClient, title
 
 // --- Alt-title indexing ---
 
-// indexAltTitles fetches alternative titles from TMDB and stores reverse-index keys.
+// indexAltTitles fetches alternative titles AND translations from TMDB
+// and stores reverse-index cache keys for each unique normalized title.
+// This enables cache hits for non-English torrents (e.g. Japanese, Korean,
+// French titles) without additional TMDB API calls.
 func (c *MatcherCache) indexAltTitles(ctx context.Context, tmdb *TMDBClient, mediaType string, tmdbID int, year int) {
-	titles, err := tmdb.GetAlternativeTitles(ctx, mediaType, tmdbID)
+	// Collect titles from both sources — alt titles (market names, misspellings)
+	// and translations (official localized titles in every language).
+	var allTitles []string
+
+	altTitles, err := tmdb.GetAlternativeTitles(ctx, mediaType, tmdbID)
 	if err != nil {
 		c.logger.Warn("failed to fetch alt titles", "media_type", mediaType, "tmdb_id", tmdbID, "error", err)
-		return
+	} else {
+		allTitles = append(allTitles, altTitles...)
 	}
 
-	if len(titles) == 0 {
+	translations, err := tmdb.GetTranslations(ctx, mediaType, tmdbID)
+	if err != nil {
+		c.logger.Warn("failed to fetch translations", "media_type", mediaType, "tmdb_id", tmdbID, "error", err)
+	} else {
+		allTitles = append(allTitles, translations...)
+	}
+
+	if len(allTitles) == 0 {
 		return
 	}
 
@@ -437,18 +452,29 @@ func (c *MatcherCache) indexAltTitles(ctx context.Context, tmdb *TMDBClient, med
 
 	data, _ := json.Marshal(searchResult{ID: tmdbID, Year: year})
 
-	for _, title := range titles {
+	// Deduplicate by normalized form to avoid redundant SET calls.
+	seen := make(map[string]struct{}, len(allTitles))
+	indexed := 0
+	for _, title := range allTitles {
 		norm := normalizeTitle(title)
 		if norm == "" {
 			continue
 		}
+		if _, ok := seen[norm]; ok {
+			continue
+		}
+		seen[norm] = struct{}{}
+
 		altKey := prefix + norm
 		c.setPositive(ctx, altKey, data)
+		indexed++
 	}
 
-	c.logger.Debug("indexed alt titles",
+	c.logger.Debug("indexed alt titles and translations",
 		"media_type", mediaType,
 		"tmdb_id", tmdbID,
-		"count", len(titles),
+		"alt_titles", len(altTitles),
+		"translations", len(translations),
+		"unique_indexed", indexed,
 	)
 }

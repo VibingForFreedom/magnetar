@@ -252,6 +252,167 @@ func TestTMDBClient_GetTVExternalIDs(t *testing.T) {
 	}
 }
 
+func TestTMDBClient_GetAlternativeTitles(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/3/movie/872585/alternative_titles":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"titles": []map[string]string{
+					{"title": "オッペンハイマー"},
+					{"title": "오펜하이머"},
+					{"title": "Oppenheimer"},
+				},
+			})
+		case r.URL.Path == "/3/tv/1399/alternative_titles":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"results": []map[string]string{
+					{"title": "Во все тяжкие"},
+					{"title": "Ruptura Total"},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer ts.Close()
+
+	// Test movie alt titles
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, ts.URL+"/3/movie/872585/alternative_titles?api_key=test", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+
+	var movieResp struct {
+		Titles []struct {
+			Title string `json:"title"`
+		} `json:"titles"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&movieResp); err != nil {
+		t.Fatal(err)
+	}
+	if len(movieResp.Titles) != 3 {
+		t.Errorf("expected 3 titles, got %d", len(movieResp.Titles))
+	}
+	if movieResp.Titles[0].Title != "オッペンハイマー" {
+		t.Errorf("expected Japanese title, got %q", movieResp.Titles[0].Title)
+	}
+
+	// Test TV alt titles
+	req2, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, ts.URL+"/3/tv/1399/alternative_titles?api_key=test", nil)
+	resp2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close() //nolint:errcheck
+
+	var tvResp struct {
+		Results []struct {
+			Title string `json:"title"`
+		} `json:"results"`
+	}
+	if err := json.NewDecoder(resp2.Body).Decode(&tvResp); err != nil {
+		t.Fatal(err)
+	}
+	if len(tvResp.Results) != 2 {
+		t.Errorf("expected 2 results, got %d", len(tvResp.Results))
+	}
+}
+
+func TestTMDBClient_GetTranslations(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/3/movie/872585/translations":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"translations": []map[string]interface{}{
+					{"data": map[string]string{"title": "Oppenheimer", "overview": "..."}},
+					{"data": map[string]string{"title": "オッペンハイマー", "overview": "..."}},
+					{"data": map[string]string{"title": "오펜하이머", "overview": "..."}},
+					{"data": map[string]string{"title": "Оппенгеймер", "overview": "..."}},
+					{"data": map[string]string{"title": "", "overview": "..."}}, // empty title
+				},
+			})
+		case r.URL.Path == "/3/tv/1399/translations":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"translations": []map[string]interface{}{
+					{"data": map[string]string{"name": "Breaking Bad", "overview": "..."}},
+					{"data": map[string]string{"name": "Во все тяжкие", "overview": "..."}},
+					{"data": map[string]string{"name": "ブレイキング・バッド", "overview": "..."}},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer ts.Close()
+
+	// Test movie translations
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, ts.URL+"/3/movie/872585/translations?api_key=test", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+
+	var movieResp struct {
+		Translations []struct {
+			Data struct {
+				Title string `json:"title"`
+				Name  string `json:"name"`
+			} `json:"data"`
+		} `json:"translations"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&movieResp); err != nil {
+		t.Fatal(err)
+	}
+	if len(movieResp.Translations) != 5 {
+		t.Errorf("expected 5 translations, got %d", len(movieResp.Translations))
+	}
+
+	// Verify non-empty titles (matching GetTranslations logic)
+	var titles []string
+	for _, tr := range movieResp.Translations {
+		title := tr.Data.Title
+		if title == "" {
+			title = tr.Data.Name
+		}
+		if title != "" {
+			titles = append(titles, title)
+		}
+	}
+	if len(titles) != 4 {
+		t.Errorf("expected 4 non-empty titles, got %d: %v", len(titles), titles)
+	}
+
+	// Test TV translations (uses "name" field instead of "title")
+	req2, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, ts.URL+"/3/tv/1399/translations?api_key=test", nil)
+	resp2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close() //nolint:errcheck
+
+	var tvResp struct {
+		Translations []struct {
+			Data struct {
+				Title string `json:"title"`
+				Name  string `json:"name"`
+			} `json:"data"`
+		} `json:"translations"`
+	}
+	if err := json.NewDecoder(resp2.Body).Decode(&tvResp); err != nil {
+		t.Fatal(err)
+	}
+	if len(tvResp.Translations) != 3 {
+		t.Errorf("expected 3 translations, got %d", len(tvResp.Translations))
+	}
+	// TV uses "name" field
+	if tvResp.Translations[2].Data.Name != "ブレイキング・バッド" {
+		t.Errorf("expected Japanese name, got %q", tvResp.Translations[2].Data.Name)
+	}
+}
+
 func TestTMDBClient_ServerError(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
