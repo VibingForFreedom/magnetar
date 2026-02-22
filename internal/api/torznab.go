@@ -111,7 +111,14 @@ func (s *Server) handleTorznab(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if query == "" {
-		s.writeTorznabError(w, http.StatusBadRequest, 200, "missing search query")
+		// RSS mode: return recent torrents filtered by category (no text search).
+		result, err := s.store.ListRecent(r.Context(), opts)
+		if err != nil {
+			s.writeTorznabError(w, http.StatusInternalServerError, 100, "search failed")
+			return
+		}
+		items := buildTorznabItems(result.Torrents)
+		s.writeXML(w, http.StatusOK, torznabRSSResponse(items, result.Total, offset))
 		return
 	}
 

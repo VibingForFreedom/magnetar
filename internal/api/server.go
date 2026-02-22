@@ -85,6 +85,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/search", s.handleSearch)
 	mux.HandleFunc("/api/settings", s.handleSettings)
 	mux.HandleFunc("/api/torznab", s.handleTorznab)
+	mux.HandleFunc("/torznab", s.handleTorznab)
+	mux.HandleFunc("/api", s.handleTorznab) // Prowlarr default API Path
 	mux.HandleFunc("/api/torrents/latest", s.handleLatest)
 	mux.HandleFunc("/api/torrents/lookup", s.handleHashBulk)
 	mux.HandleFunc("/api/torrents/", s.handleHashGet)
@@ -114,12 +116,13 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/api/") {
+		isTorznab := r.URL.Path == "/api/torznab" || r.URL.Path == "/torznab" || r.URL.Path == "/api"
+		if !strings.HasPrefix(r.URL.Path, "/api/") && !isTorznab {
 			next.ServeHTTP(w, r)
 			return
 		}
 
-		if r.URL.Path == "/api/torznab" && r.URL.Query().Get("t") == "caps" {
+		if isTorznab && r.URL.Query().Get("t") == "caps" {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -149,6 +152,7 @@ func (s *Server) writeXML(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 	w.WriteHeader(status)
 	if v != nil {
+		_, _ = w.Write([]byte(xml.Header))
 		_ = xml.NewEncoder(w).Encode(v)
 	}
 }
