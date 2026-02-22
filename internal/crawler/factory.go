@@ -62,17 +62,18 @@ func New(cfg Config, st store.Store, m *metrics.Metrics, logger *slog.Logger) (*
 		nodesForSampleInfoHashes: concurrency.NewBufferedConcurrentChannel[ktable.Node](
 			10*scalingFactor, 10*scalingFactor),
 		infoHashTriage: concurrency.NewBatchingChannel[nodeHasPeersForHash](
-			10*scalingFactor, 1000, 5*time.Second),
+			100*scalingFactor, 1000, time.Second),
 		getPeers: concurrency.NewBufferedConcurrentChannel[nodeHasPeersForHash](
-			10*scalingFactor, 20*scalingFactor),
+			50*scalingFactor, 20*scalingFactor),
 		scrape: concurrency.NewBufferedConcurrentChannel[nodeHasPeersForHash](
 			10*scalingFactor, 20*scalingFactor),
 		requestMetaInfo: concurrency.NewBufferedConcurrentChannel[infoHashWithPeers](
-			10*scalingFactor, 40*scalingFactor),
+			50*scalingFactor, 40*scalingFactor),
+		metaRetry: make(chan infoHashWithPeers, 50*scalingFactor),
 		persistTorrents: concurrency.NewBatchingChannel[infoHashWithMetaInfo](
-			1000, 1000, time.Minute),
+			200, 200, 10*time.Second),
 		persistSources: concurrency.NewBatchingChannel[infoHashWithScrape](
-			1000, 1000, time.Minute),
+			200, 200, 10*time.Second),
 		saveFilesThreshold: cfg.SaveFilesThreshold,
 		rescrapeThreshold:  cfg.RescrapeThreshold,
 		store:              st,

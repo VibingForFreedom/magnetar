@@ -44,6 +44,7 @@ type Crawler struct {
 	getPeers                     concurrency.BufferedConcurrentChannel[nodeHasPeersForHash]
 	scrape                       concurrency.BufferedConcurrentChannel[nodeHasPeersForHash]
 	requestMetaInfo              concurrency.BufferedConcurrentChannel[infoHashWithPeers]
+	metaRetry                    chan infoHashWithPeers
 	persistTorrents              concurrency.BatchingChannel[infoHashWithMetaInfo]
 	persistSources               concurrency.BatchingChannel[infoHashWithScrape]
 	rescrapeThreshold            time.Duration
@@ -91,6 +92,7 @@ func (c *Crawler) start(ctx context.Context) {
 	go c.runInfoHashTriage(ctx)
 	go c.runGetPeers(ctx)
 	go c.runRequestMetaInfo(ctx)
+	go c.runMetaRetry(ctx)
 	go c.runScrape(ctx)
 	go c.reseedBootstrapNodes(ctx)
 	go c.runPersistTorrents(ctx)
@@ -112,7 +114,8 @@ type infoHashWithMetaInfo struct {
 
 type infoHashWithPeers struct {
 	nodeHasPeersForHash
-	peers []netip.AddrPort
+	peers   []netip.AddrPort
+	retries uint8
 }
 
 type infoHashWithScrape struct {
@@ -130,6 +133,28 @@ func (i *ignoreHashes) testAndAdd(id protocol.ID) bool {
 	i.mutex.Lock()
 	defer i.mutex.Unlock()
 	return i.bloom.TestAndAdd(id[:])
+}
+
+// runMetaRetry reads from the retry channel, waits 30s, then re-queues
+// the request into requestMetaInfo for a second attempt.
+func (c *Crawler) runMetaRetry(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case req := <-c.metaRetry:
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(30 * time.Second):
+			}
+			// Non-blocking send — drop if requestMetaInfo is full.
+			select {
+			case c.requestMetaInfo.In() <- req:
+			default:
+			}
+		}
+	}
 }
 
 func (c *Crawler) rotateSoughtNodeID(ctx context.Context) {

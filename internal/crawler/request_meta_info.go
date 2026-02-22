@@ -17,7 +17,22 @@ func (c *Crawler) runRequestMetaInfo(ctx context.Context) {
 		}
 		mi, reqErr := c.doRequestMetaInfo(ctx, req.infoHash, req.peers)
 		if reqErr != nil {
-			c.metrics.MetadataFailed.Add(1)
+			// Retry once if this was the first attempt and not a banning error.
+			if req.retries < 1 {
+				retry := infoHashWithPeers{
+					nodeHasPeersForHash: req.nodeHasPeersForHash,
+					peers:               req.peers,
+					retries:             req.retries + 1,
+				}
+				select {
+				case c.metaRetry <- retry:
+				default:
+					// Retry queue full — count as permanent failure.
+					c.metrics.MetadataFailed.Add(1)
+				}
+			} else {
+				c.metrics.MetadataFailed.Add(1)
+			}
 			return
 		}
 		c.metrics.MetadataFetched.Add(1)
@@ -38,8 +53,8 @@ func (c *Crawler) doRequestMetaInfo(
 	hash protocol.ID,
 	peers []netip.AddrPort,
 ) (metainforequester.Response, error) {
-	// Fan out to up to 3 peers concurrently; first success wins.
-	maxConcurrent := 3
+	// Fan out to up to 5 peers concurrently; first success wins.
+	maxConcurrent := 5
 	if len(peers) < maxConcurrent {
 		maxConcurrent = len(peers)
 	}

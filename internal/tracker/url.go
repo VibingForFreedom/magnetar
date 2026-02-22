@@ -14,9 +14,10 @@ const (
 )
 
 type trackerURL struct {
-	proto    trackerProto
-	host     string // host:port
-	scrapeURL string // full scrape URL for HTTP trackers
+	proto       trackerProto
+	host        string // host:port
+	scrapeURL   string // full scrape URL for HTTP trackers
+	announceURL string // original announce URL (used for HTTP announce)
 }
 
 // parseTrackerURL parses a tracker announce URL into a structured form.
@@ -32,14 +33,14 @@ func parseTrackerURL(rawURL string) (trackerURL, error) {
 		if !strings.Contains(host, ":") {
 			host += ":80"
 		}
-		return trackerURL{proto: protoUDP, host: host}, nil
+		return trackerURL{proto: protoUDP, host: host, announceURL: rawURL}, nil
 
 	case "http", "https":
 		scrape := announcToScrape(rawURL)
 		if scrape == "" {
 			return trackerURL{}, fmt.Errorf("cannot derive scrape URL from %q", rawURL)
 		}
-		return trackerURL{proto: protoHTTP, host: u.Host, scrapeURL: scrape}, nil
+		return trackerURL{proto: protoHTTP, host: u.Host, scrapeURL: scrape, announceURL: rawURL}, nil
 
 	default:
 		return trackerURL{}, fmt.Errorf("unsupported tracker scheme: %q", u.Scheme)

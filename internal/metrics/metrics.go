@@ -28,6 +28,15 @@ type Metrics struct {
 	TrackerScrapeFailures  atomic.Int64
 	TrackerScrapeUpdated   atomic.Int64
 
+	// Tracker announce counters
+	TrackerAnnounceAttempts  atomic.Int64
+	TrackerAnnounceSuccesses atomic.Int64
+
+	// getPeers counters
+	GetPeersAttempts atomic.Int64
+	GetPeersNoPeers  atomic.Int64
+	GetPeersFailed   atomic.Int64
+
 	// Rate calculators
 	discoveryRate    *RateCalc
 	metadataRate     *RateCalc
@@ -80,11 +89,16 @@ type Snapshot struct {
 	MatchSuccesses     int64   `json:"match_successes"`
 	MatchFailures      int64   `json:"match_failures"`
 	TorrentsSaved          int64   `json:"torrents_saved"`
-	TrackerScrapeAttempts  int64   `json:"tracker_scrape_attempts"`
-	TrackerScrapeSuccesses int64   `json:"tracker_scrape_successes"`
-	TrackerScrapeFailures  int64   `json:"tracker_scrape_failures"`
-	TrackerScrapeUpdated   int64   `json:"tracker_scrape_updated"`
-	DiscoveryRate          float64 `json:"discovery_rate"`
+	TrackerScrapeAttempts    int64   `json:"tracker_scrape_attempts"`
+	TrackerScrapeSuccesses  int64   `json:"tracker_scrape_successes"`
+	TrackerScrapeFailures   int64   `json:"tracker_scrape_failures"`
+	TrackerScrapeUpdated    int64   `json:"tracker_scrape_updated"`
+	TrackerAnnounceAttempts int64   `json:"tracker_announce_attempts"`
+	TrackerAnnounceSuccesses int64  `json:"tracker_announce_successes"`
+	GetPeersAttempts        int64   `json:"get_peers_attempts"`
+	GetPeersNoPeers         int64   `json:"get_peers_no_peers"`
+	GetPeersFailed          int64   `json:"get_peers_failed"`
+	DiscoveryRate           float64 `json:"discovery_rate"`
 	MetadataRate           float64 `json:"metadata_rate"`
 	MatchRate              float64 `json:"match_rate"`
 	TrackerScrapeRate      float64 `json:"tracker_scrape_rate"`
@@ -102,11 +116,16 @@ func (m *Metrics) Snapshot() Snapshot {
 		MatchSuccesses:     m.MatchSuccesses.Load(),
 		MatchFailures:      m.MatchFailures.Load(),
 		TorrentsSaved:          m.TorrentsSaved.Load(),
-		TrackerScrapeAttempts:  m.TrackerScrapeAttempts.Load(),
-		TrackerScrapeSuccesses: m.TrackerScrapeSuccesses.Load(),
-		TrackerScrapeFailures:  m.TrackerScrapeFailures.Load(),
-		TrackerScrapeUpdated:   m.TrackerScrapeUpdated.Load(),
-		DiscoveryRate:          m.discoveryRate.Rate(),
+		TrackerScrapeAttempts:    m.TrackerScrapeAttempts.Load(),
+		TrackerScrapeSuccesses:  m.TrackerScrapeSuccesses.Load(),
+		TrackerScrapeFailures:   m.TrackerScrapeFailures.Load(),
+		TrackerScrapeUpdated:    m.TrackerScrapeUpdated.Load(),
+		TrackerAnnounceAttempts: m.TrackerAnnounceAttempts.Load(),
+		TrackerAnnounceSuccesses: m.TrackerAnnounceSuccesses.Load(),
+		GetPeersAttempts:        m.GetPeersAttempts.Load(),
+		GetPeersNoPeers:         m.GetPeersNoPeers.Load(),
+		GetPeersFailed:          m.GetPeersFailed.Load(),
+		DiscoveryRate:           m.discoveryRate.Rate(),
 		MetadataRate:           m.metadataRate.Rate(),
 		MatchRate:              m.matchRate.Rate(),
 		TrackerScrapeRate:      m.trackerScrapeRate.Rate(),

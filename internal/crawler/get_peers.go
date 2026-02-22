@@ -42,8 +42,10 @@ func (c *Crawler) requestPeersForHash(
 	ctx context.Context,
 	req nodeHasPeersForHash,
 ) (infoHashWithPeers, error) {
+	c.metrics.GetPeersAttempts.Add(1)
 	res, err := c.client.GetPeers(ctx, req.node, req.infoHash)
 	if err != nil {
+		c.metrics.GetPeersFailed.Add(1)
 		c.kTable.BatchCommand(ktable.DropAddr{
 			Addr:   req.node.Addr(),
 			Reason: fmt.Errorf("failed to get peers: %w", err),
@@ -69,6 +71,19 @@ func (c *Crawler) requestPeersForHash(
 		cancel()
 	}
 	if len(res.Values) < 1 {
+		// Fallback: try tracker announce for peer discovery
+		if c.trackerScraper != nil {
+			c.metrics.TrackerAnnounceAttempts.Add(1)
+			trackerPeers := c.trackerScraper.AnnouncePeers(ctx, req.infoHash)
+			if len(trackerPeers) > 0 {
+				c.metrics.TrackerAnnounceSuccesses.Add(1)
+				return infoHashWithPeers{
+					nodeHasPeersForHash: req,
+					peers:               trackerPeers,
+				}, nil
+			}
+		}
+		c.metrics.GetPeersNoPeers.Add(1)
 		return infoHashWithPeers{}, errors.New("no peers found")
 	}
 	return infoHashWithPeers{

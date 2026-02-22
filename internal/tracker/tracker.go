@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"sync"
 	"sync/atomic"
 
@@ -14,6 +15,15 @@ import (
 type ScrapeResult struct {
 	Seeders  int
 	Leechers int
+}
+
+// TrackerInfo exposes per-tracker state for the API.
+type TrackerInfo struct {
+	Host         string `json:"host"`
+	Protocol     string `json:"protocol"`
+	BatchLimit   int32  `json:"batch_limit"`
+	SuccessCount int64  `json:"success_count"`
+	InitialLimit int32  `json:"initial_limit"`
 }
 
 // trackerState tracks the adaptive batch limit for a single tracker.
@@ -115,6 +125,45 @@ func (st *trackerState) recordSuccess() {
 			st.batchLimit.Store(grown)
 		}
 	}
+}
+
+// TrackerStats returns the current state of all configured trackers.
+func (s *Scraper) TrackerStats() []TrackerInfo {
+	s.mu.RLock()
+	trackers := s.trackers
+	s.mu.RUnlock()
+
+	infos := make([]TrackerInfo, 0, len(trackers))
+	for _, t := range trackers {
+		proto := "udp"
+		if t.proto == protoHTTP {
+			proto = "http"
+		}
+
+		info := TrackerInfo{
+			Host:     t.host,
+			Protocol: proto,
+		}
+
+		if v, ok := s.trackerStates.Load(t.host); ok {
+			st := v.(*trackerState)
+			info.BatchLimit = st.batchLimit.Load()
+			info.SuccessCount = st.successCount.Load()
+			info.InitialLimit = st.initialLimit
+		} else {
+			// No state yet — use initial defaults
+			initial := int32(maxUDPBatchSize)
+			if t.proto == protoHTTP {
+				initial = int32(maxHTTPBatchSize)
+			}
+			info.BatchLimit = initial
+			info.InitialLimit = initial
+		}
+
+		infos = append(infos, info)
+	}
+
+	return infos
 }
 
 // ScrapeBatch performs concurrent batch scrapes across all configured trackers
@@ -230,4 +279,76 @@ func (s *Scraper) Scrape(ctx context.Context, infoHash [20]byte) ScrapeResult {
 		return r
 	}
 	return ScrapeResult{}
+}
+
+// AnnouncePeers queries all configured trackers via announce requests to discover
+// peer addresses for the given info hash. Returns a deduplicated list of peers
+// (capped at 50).
+func (s *Scraper) AnnouncePeers(ctx context.Context, infoHash [20]byte) []netip.AddrPort {
+	if !s.cfg.TrackerEnabled {
+		return nil
+	}
+
+	s.mu.RLock()
+	trackers := s.trackers
+	s.mu.RUnlock()
+
+	if len(trackers) == 0 {
+		return nil
+	}
+
+	type announceResult struct {
+		peers []netip.AddrPort
+	}
+
+	ch := make(chan announceResult, len(trackers))
+
+	for _, t := range trackers {
+		go func(t trackerURL) {
+			announceCtx, cancel := context.WithTimeout(ctx, s.cfg.TrackerTimeout)
+			defer cancel()
+
+			var peers []netip.AddrPort
+			var err error
+
+			switch t.proto {
+			case protoUDP:
+				peers, err = announceUDP(announceCtx, t.host, infoHash)
+			case protoHTTP:
+				peers, err = announceHTTP(announceCtx, s.client, t.announceURL, infoHash)
+			}
+
+			if err != nil {
+				s.logger.Debug("tracker announce failed",
+					"tracker", t.host,
+					"error", err,
+				)
+				ch <- announceResult{}
+				return
+			}
+			ch <- announceResult{peers: peers}
+		}(t)
+	}
+
+	// Collect and deduplicate
+	seen := make(map[netip.AddrPort]struct{})
+	var result []netip.AddrPort
+
+	for range trackers {
+		r := <-ch
+		for _, p := range r.peers {
+			if _, exists := seen[p]; exists {
+				continue
+			}
+			seen[p] = struct{}{}
+			result = append(result, p)
+		}
+	}
+
+	// Cap at 50 peers
+	if len(result) > 50 {
+		result = result[:50]
+	}
+
+	return result
 }

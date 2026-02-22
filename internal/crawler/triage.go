@@ -34,7 +34,16 @@ func (c *Crawler) runInfoHashTriage(ctx context.Context) {
 
 			existing, lookupErr := c.store.BulkLookup(ctx, allHashes)
 			if lookupErr != nil {
-				c.logger.Error("failed to lookup infohashes", "error", lookupErr)
+				c.logger.Error("failed to lookup infohashes, routing all to getPeers", "error", lookupErr)
+				// On DB error, treat all hashes as unknown → route to getPeers.
+				// UpsertTorrent handles duplicates via upsert, so this is safe.
+				for _, req := range reqMap {
+					select {
+					case <-ctx.Done():
+						return
+					case c.getPeers.In() <- req:
+					}
+				}
 				continue
 			}
 
