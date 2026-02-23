@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -402,8 +403,8 @@ type SeedersLeechersUpdate struct {
 }
 
 var (
-	ErrNotFound        = fmt.Errorf("torrent not found")
-	ErrInvalidHash     = fmt.Errorf("invalid info hash")
-	ErrInvalidInput    = fmt.Errorf("invalid input")
-	ErrSettingNotFound = fmt.Errorf("setting not found")
+	ErrNotFound        = errors.New("torrent not found")
+	ErrInvalidHash     = errors.New("invalid info hash")
+	ErrInvalidInput    = errors.New("invalid input")
+	ErrSettingNotFound = errors.New("setting not found")
 )

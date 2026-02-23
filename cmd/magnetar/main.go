@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
+	_ "net/http/pprof" //nolint:gosec // intentional: bound to localhost:6060 only
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -60,7 +63,7 @@ func run() error {
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n\n", os.Args[1])
 		printUsage()
-		return fmt.Errorf("unknown command")
+		return errors.New("unknown command")
 	}
 }
 
@@ -202,11 +205,27 @@ func runServe(_ *flag.FlagSet) error { //nolint:unparam
 		}
 	}()
 
+	// Start pprof debug server on localhost only
+	runtime.SetMutexProfileFraction(5)
+	runtime.SetBlockProfileRate(1)
+	go func() {
+		pprofServer := &http.Server{
+			Addr:         "127.0.0.1:6060",
+			Handler:      nil, // DefaultServeMux (net/http/pprof registers there)
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 120 * time.Second,
+		}
+		logger.Info("pprof server listening", "addr", pprofServer.Addr)
+		if err := pprofServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Warn("pprof server error", "error", err)
+		}
+	}()
+
 	// Start DHT crawler if enabled
 	var dhtCrawler *crawler.Crawler
 	if cfg.CrawlEnabled {
 		crawlCfg := crawler.NewDefaultConfig()
-		crawlCfg.Port = uint16(cfg.CrawlPort)         //nolint:gosec // validated in config
+		crawlCfg.Port = uint16(cfg.CrawlPort)           //nolint:gosec // validated in config
 		crawlCfg.ScalingFactor = uint(cfg.CrawlWorkers) //nolint:gosec // validated in config
 
 		var crawlErr error
@@ -316,7 +335,7 @@ func runMigrate(args []string) error {
 	}
 
 	if *from == "" || *fromPath == "" || *to == "" || *toDSN == "" {
-		return fmt.Errorf("all flags required: --from, --from-path, --to, --to-dsn")
+		return errors.New("all flags required: --from, --from-path, --to, --to-dsn")
 	}
 
 	validBackends := map[string]bool{"sqlite": true, "mariadb": true}
@@ -348,7 +367,7 @@ func runBackup(args []string) error {
 	}
 
 	if *output == "" {
-		return fmt.Errorf("--output flag is required")
+		return errors.New("--output flag is required")
 	}
 
 	cfg, err := config.Load()
@@ -360,7 +379,7 @@ func runBackup(args []string) error {
 	logger := slog.Default()
 
 	if !cfg.IsSQLite() {
-		return fmt.Errorf("backup is only supported for SQLite backend")
+		return errors.New("backup is only supported for SQLite backend")
 	}
 
 	ctx := context.Background()

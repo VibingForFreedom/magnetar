@@ -381,7 +381,7 @@ func (c *MatcherCache) GetTVExternalIDs(ctx context.Context, tmdb *TMDBClient, t
 
 // --- SearchSeries (TVDB) ---
 
-func (c *MatcherCache) SearchSeries(ctx context.Context, tvdb *TVDBClient, title string, year int) (int, error) {
+func (c *MatcherCache) SearchSeries(ctx context.Context, tvdb *TVDBClient, title string, year int) (int, int, error) {
 	if c == nil {
 		return tvdb.SearchSeries(ctx, title, year)
 	}
@@ -390,30 +390,30 @@ func (c *MatcherCache) SearchSeries(ctx context.Context, tvdb *TVDBClient, title
 
 	if data, ok := c.get(ctx, key); ok {
 		if isNegative(data) {
-			return 0, nil
+			return 0, 0, nil
 		}
 		var sr searchResult
 		if err := json.Unmarshal(data, &sr); err == nil {
 			c.logger.Debug("cache hit", "key", key, "tvdb_id", sr.ID)
 			c.refreshTTL(ctx, key)
-			return sr.ID, nil
+			return sr.ID, sr.Year, nil
 		}
 	}
 
-	tvdbID, err := tvdb.SearchSeries(ctx, title, year)
+	tvdbID, firstAirYear, err := tvdb.SearchSeries(ctx, title, year)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
 	if tvdbID == 0 {
 		c.setNegative(ctx, key)
-		return 0, nil
+		return 0, 0, nil
 	}
 
-	data, _ := json.Marshal(searchResult{ID: tvdbID, Year: year})
+	data, _ := json.Marshal(searchResult{ID: tvdbID, Year: firstAirYear})
 	c.setPositive(ctx, key, data)
 
-	return tvdbID, nil
+	return tvdbID, firstAirYear, nil
 }
 
 // --- Alt-title indexing ---

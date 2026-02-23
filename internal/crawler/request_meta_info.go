@@ -71,7 +71,7 @@ func (c *Crawler) doRequestMetaInfo(
 	var errs []error
 	var errsMutex sync.Mutex
 
-	for i := 0; i < maxConcurrent; i++ {
+	for i := range maxConcurrent {
 		go func(p netip.AddrPort) {
 			res, err := c.metainfoRequester.Request(fanCtx, hash, p)
 			if err != nil {
@@ -89,7 +89,7 @@ func (c *Crawler) doRequestMetaInfo(
 		}(peers[i])
 	}
 
-	for i := 0; i < maxConcurrent; i++ {
+	for range maxConcurrent {
 		r := <-results
 		if r.err == nil {
 			cancel() // cancel remaining peers

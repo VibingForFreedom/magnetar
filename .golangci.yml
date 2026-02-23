@@ -11,32 +11,36 @@ linters:
     - staticcheck    # Comprehensive static analysis (SA*, S*, ST*, QF*)
     - errcheck       # Unchecked errors
     - ineffassign    # Detects useless assignments
-    - bodyclose      # HTTP response body not closed
+    - bodyclose      # HTTP response body not closed (connection leak)
     - durationcheck  # Multiplying two durations
     - nilerr         # Returning nil after checking err != nil
-    - sqlclosecheck  # SQL rows/stmt not closed
-    - makezero       # Slices with make([]T, n) then append (silent bugs)
+    - sqlclosecheck  # SQL rows/stmt not closed (connection leak)
+    - makezero       # Slices with make([]T, n) then append (off-by-n bugs)
     - errorlint      # Proper error wrapping/comparison (errors.Is/As)
+
+    # Memory & performance
+    - prealloc       # Slice pre-allocation opportunities in loops
+    - gocritic       # With performance tag: stringXbytes, indexAlloc, appendAssign
+    - perfsprint     # fmt.Sprintf replaceable with zero-alloc alternatives
+    - unconvert      # Unnecessary type conversions that may allocate
+    - intrange       # for i := 0; i < len(s); i++ -> for i := range s (Go 1.22+)
 
     # Code quality
     - unused         # Unused code
-    - gocritic       # Opinionated but useful style checks
-    - unconvert      # Unnecessary type conversions
     - unparam        # Unused function parameters
-    - prealloc       # Slice pre-allocation opportunities
     - misspell       # Spelling mistakes in comments/strings
     - copyloopvar    # Loop variable copy issues (Go 1.22+)
     - goconst        # Repeated string literals that should be constants
 
     # Security
     - gosec          # Security issues (SQL injection, hardcoded creds, etc.)
-    - noctx          # HTTP requests without context.Context
+    - noctx          # HTTP requests without context (goroutine/connection leak)
 
 linters-settings:
   govet:
     enable-all: true
     disable:
-      - fieldalignment  # Too noisy for this project
+      - fieldalignment  # Too noisy — use betteralign for targeted struct optimization
   gocritic:
     enabled-tags:
       - diagnostic
@@ -57,6 +61,15 @@ linters-settings:
       - (io.Closer).Close
       - (*database/sql.Rows).Close
       - (net.Conn).Close
+  perfsprint:
+    int-conversion: true
+    err-error: true
+    errorf: true
+    sprintf1: true
+  prealloc:
+    simple: true
+    range-loops: true
+    for-loops: true
 
 issues:
   exclude-dirs:
@@ -64,3 +77,9 @@ issues:
     - frontend
   max-issues-per-linter: 0
   max-same-issues: 0
+  exclude-rules:
+    # Test files: allow fmt.Sprintf freely
+    - path: "_test\\.go"
+      linters:
+        - perfsprint
+        - goconst

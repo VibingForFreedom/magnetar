@@ -152,7 +152,7 @@ func testBulkInsert(t *testing.T, st Store) {
 
 	const count = 100
 	torrents := make([]*Torrent, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		infoHash := makeInfoHash()
 		torrents[i] = makeTestTorrent(infoHash, fmt.Sprintf("Bulk Movie %d 2024 1080p", i))
 		torrents[i].Category = CategoryTV
@@ -172,7 +172,7 @@ func testBulkInsert(t *testing.T, st Store) {
 		t.Errorf("TotalTorrents mismatch: got %d, want %d", stats.TotalTorrents, count)
 	}
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		idx := i * 10
 		got, err := st.GetTorrent(ctx, torrents[idx].InfoHash)
 		if err != nil {
@@ -253,7 +253,7 @@ func testMatchQueue(t *testing.T, st Store) {
 	ctx := context.Background()
 
 	const unmatchedCount = 5
-	for i := 0; i < unmatchedCount; i++ {
+	for i := range unmatchedCount {
 		torrent := makeTestTorrent(makeInfoHash(), fmt.Sprintf("Unmatched Movie %d 2024", i))
 		torrent.MatchStatus = MatchUnmatched
 		torrent.MatchAttempts = 0
@@ -426,7 +426,7 @@ func testStats(t *testing.T, st Store) {
 		t.Errorf("expected 0 total on empty store, got %d", stats.TotalTorrents)
 	}
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		torrent := makeTestTorrent(makeInfoHash(), fmt.Sprintf("Stats Test %d", i))
 		if err := st.UpsertTorrent(ctx, torrent); err != nil {
 			t.Fatalf("UpsertTorrent failed: %v", err)

@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"runtime"
 	"sync/atomic"
 	"time"
 )
@@ -18,6 +19,7 @@ type Metrics struct {
 	MatchAttempts  atomic.Int64
 	MatchSuccesses atomic.Int64
 	MatchFailures  atomic.Int64
+	MatchJunk      atomic.Int64
 
 	// Store counters
 	TorrentsSaved atomic.Int64
@@ -88,6 +90,7 @@ type Snapshot struct {
 	MatchAttempts      int64   `json:"match_attempts"`
 	MatchSuccesses     int64   `json:"match_successes"`
 	MatchFailures      int64   `json:"match_failures"`
+	MatchJunk          int64   `json:"match_junk"`
 	TorrentsSaved          int64   `json:"torrents_saved"`
 	TrackerScrapeAttempts    int64   `json:"tracker_scrape_attempts"`
 	TrackerScrapeSuccesses  int64   `json:"tracker_scrape_successes"`
@@ -103,9 +106,20 @@ type Snapshot struct {
 	MatchRate              float64 `json:"match_rate"`
 	TrackerScrapeRate      float64 `json:"tracker_scrape_rate"`
 	UptimeSeconds          int64   `json:"uptime_seconds"`
+
+	// Runtime memory stats
+	HeapInuse    uint64 `json:"heap_inuse"`
+	HeapSys      uint64 `json:"heap_sys"`
+	HeapReleased uint64 `json:"heap_released"`
+	NumGC        uint32 `json:"num_gc"`
+	NumGoroutine int    `json:"num_goroutine"`
+	MemSysMB     uint64 `json:"mem_sys_mb"`
 }
 
 func (m *Metrics) Snapshot() Snapshot {
+	var mem runtime.MemStats
+	runtime.ReadMemStats(&mem)
+
 	return Snapshot{
 		DHTNodesVisited:    m.DHTNodesVisited.Load(),
 		DHTInfoHashesRecv:  m.DHTInfoHashesRecv.Load(),
@@ -115,6 +129,7 @@ func (m *Metrics) Snapshot() Snapshot {
 		MatchAttempts:      m.MatchAttempts.Load(),
 		MatchSuccesses:     m.MatchSuccesses.Load(),
 		MatchFailures:      m.MatchFailures.Load(),
+		MatchJunk:          m.MatchJunk.Load(),
 		TorrentsSaved:          m.TorrentsSaved.Load(),
 		TrackerScrapeAttempts:    m.TrackerScrapeAttempts.Load(),
 		TrackerScrapeSuccesses:  m.TrackerScrapeSuccesses.Load(),
@@ -130,5 +145,12 @@ func (m *Metrics) Snapshot() Snapshot {
 		MatchRate:              m.matchRate.Rate(),
 		TrackerScrapeRate:      m.trackerScrapeRate.Rate(),
 		UptimeSeconds:          int64(time.Since(m.StartTime).Seconds()),
+
+		HeapInuse:    mem.HeapInuse,
+		HeapSys:      mem.HeapSys,
+		HeapReleased: mem.HeapReleased,
+		NumGC:        mem.NumGC,
+		NumGoroutine: runtime.NumGoroutine(),
+		MemSysMB:     mem.Sys / 1024 / 1024,
 	}
 }

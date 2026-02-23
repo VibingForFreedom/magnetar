@@ -90,11 +90,11 @@ func TestConcurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	errCh := make(chan error, goroutines)
 
-	for i := 0; i < goroutines; i++ {
+	for i := range goroutines {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			for j := 0; j < iterations; j++ {
+			for j := range iterations {
 				data := []byte(`{"goroutine":id,"iteration":j}`)
 				compressed, err := Compress(data)
 				if err != nil {

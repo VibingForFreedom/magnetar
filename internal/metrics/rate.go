@@ -55,7 +55,7 @@ func (r *RateCalc) advance(now time.Time) {
 		elapsed = windowSize
 	}
 
-	for i := 0; i < elapsed; i++ {
+	for range elapsed {
 		r.idx = (r.idx + 1) % windowSize
 		r.samples[r.idx] = 0
 	}

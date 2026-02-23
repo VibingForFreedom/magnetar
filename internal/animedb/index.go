@@ -71,7 +71,7 @@ func (idx *TitleIndex) Lookup(title string) *AnimeEntry {
 	// The trimmed result must still contain at least 2 words to avoid
 	// matching overly generic single-word titles (e.g. "far cry 5" -> "far").
 	trimmed := norm
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		lastSpace := strings.LastIndex(trimmed, " ")
 		if lastSpace <= 0 {
 			break

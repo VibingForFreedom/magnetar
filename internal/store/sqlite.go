@@ -37,7 +37,7 @@ func (s *SQLiteStore) SetTaskRegistry(r *tasklog.Registry) {
 
 func NewSQLiteStore(ctx context.Context, cfg *config.Config) (*SQLiteStore, error) {
 	if cfg == nil {
-		return nil, fmt.Errorf("config is required")
+		return nil, errors.New("config is required")
 	}
 
 	dataDir := filepath.Dir(cfg.DBPath)
@@ -47,7 +47,7 @@ func NewSQLiteStore(ctx context.Context, cfg *config.Config) (*SQLiteStore, erro
 
 	s := &SQLiteStore{cfg: cfg}
 
-	writerDSN := fmt.Sprintf("%s?_journal_mode=WAL&_busy_timeout=5000", cfg.DBPath)
+	writerDSN := cfg.DBPath + "?_journal_mode=WAL&_busy_timeout=5000"
 	var err error
 	s.writer, err = sql.Open("sqlite3", writerDSN)
 	if err != nil {
@@ -60,7 +60,7 @@ func NewSQLiteStore(ctx context.Context, cfg *config.Config) (*SQLiteStore, erro
 		return nil, fmt.Errorf("setting writer pragmas: %w", err)
 	}
 
-	readerDSN := fmt.Sprintf("%s?mode=ro&_journal_mode=WAL", cfg.DBPath)
+	readerDSN := cfg.DBPath + "?mode=ro&_journal_mode=WAL"
 	s.reader, err = sql.Open("sqlite3", readerDSN)
 	if err != nil {
 		_ = s.writer.Close()
@@ -99,7 +99,7 @@ func (s *SQLiteStore) runPragmas(ctx context.Context, db *sql.DB) error {
 
 	pragmas := []string{
 		"PRAGMA journal_mode = WAL",
-		fmt.Sprintf("PRAGMA synchronous = %s", syncMode),
+		"PRAGMA synchronous = " + syncMode,
 		"PRAGMA wal_autocheckpoint = 1000",
 		fmt.Sprintf("PRAGMA cache_size = %d", s.cfg.DBCacheSize),
 		fmt.Sprintf("PRAGMA mmap_size = %d", s.cfg.DBMmapSize),
@@ -326,13 +326,8 @@ func (s *SQLiteStore) BulkLookup(ctx context.Context, hashes [][]byte) ([]*Torre
 		}
 	}
 
-	placeholders := ""
 	args := make([]interface{}, len(hashes))
 	for i, h := range hashes {
-		if i > 0 {
-			placeholders += ","
-		}
-		placeholders += "?"
 		args[i] = h
 	}
 
@@ -342,7 +337,7 @@ func (s *SQLiteStore) BulkLookup(ctx context.Context, hashes [][]byte) ([]*Torre
 		imdb_id, tmdb_id, tvdb_id, anilist_id, kitsu_id, media_year,
 		match_status, match_attempts, match_after,
 		seeders, leechers, source, discovered_at, updated_at
-	FROM torrents WHERE info_hash IN (%s)`, placeholders)
+	FROM torrents WHERE info_hash IN (%s)`, buildPlaceholders(len(hashes)))
 
 	rows, err := s.reader.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -350,7 +345,7 @@ func (s *SQLiteStore) BulkLookup(ctx context.Context, hashes [][]byte) ([]*Torre
 	}
 	defer func() { _ = rows.Close() }()
 
-	var torrents []*Torrent
+	torrents := make([]*Torrent, 0, len(hashes))
 	for rows.Next() {
 		t, err := scanRow(rows)
 		if err != nil {
@@ -405,26 +400,16 @@ func (s *SQLiteStore) ListRecent(ctx context.Context, opts SearchOpts) (*SearchR
 	var whereClauses []string
 
 	if len(opts.Categories) > 0 {
-		placeholders := ""
-		for i, cat := range opts.Categories {
-			if i > 0 {
-				placeholders += ","
-			}
-			placeholders += "?"
+		for _, cat := range opts.Categories {
 			args = append(args, cat)
 		}
-		whereClauses = append(whereClauses, fmt.Sprintf("category IN (%s)", placeholders))
+		whereClauses = append(whereClauses, fmt.Sprintf("category IN (%s)", buildPlaceholders(len(opts.Categories))))
 	}
 	if len(opts.Quality) > 0 {
-		placeholders := ""
-		for i, q := range opts.Quality {
-			if i > 0 {
-				placeholders += ","
-			}
-			placeholders += "?"
+		for _, q := range opts.Quality {
 			args = append(args, q)
 		}
-		whereClauses = append(whereClauses, fmt.Sprintf("quality IN (%s)", placeholders))
+		whereClauses = append(whereClauses, fmt.Sprintf("quality IN (%s)", buildPlaceholders(len(opts.Quality))))
 	}
 
 	if len(whereClauses) > 0 {
@@ -450,7 +435,7 @@ func (s *SQLiteStore) ListRecent(ctx context.Context, opts SearchOpts) (*SearchR
 	}
 	defer func() { _ = rows.Close() }()
 
-	var torrents []*Torrent
+	torrents := make([]*Torrent, 0, 64)
 	for rows.Next() {
 		t, err := scanRow(rows)
 		if err != nil {
@@ -498,26 +483,16 @@ func (s *SQLiteStore) SearchByName(ctx context.Context, query string, opts Searc
 
 	var whereClauses []string
 	if len(opts.Categories) > 0 {
-		placeholders := ""
-		for i, cat := range opts.Categories {
-			if i > 0 {
-				placeholders += ","
-			}
-			placeholders += "?"
+		for _, cat := range opts.Categories {
 			args = append(args, cat)
 		}
-		whereClauses = append(whereClauses, fmt.Sprintf("t.category IN (%s)", placeholders))
+		whereClauses = append(whereClauses, fmt.Sprintf("t.category IN (%s)", buildPlaceholders(len(opts.Categories))))
 	}
 	if len(opts.Quality) > 0 {
-		placeholders := ""
-		for i, q := range opts.Quality {
-			if i > 0 {
-				placeholders += ","
-			}
-			placeholders += "?"
+		for _, q := range opts.Quality {
 			args = append(args, q)
 		}
-		whereClauses = append(whereClauses, fmt.Sprintf("t.quality IN (%s)", placeholders))
+		whereClauses = append(whereClauses, fmt.Sprintf("t.quality IN (%s)", buildPlaceholders(len(opts.Quality))))
 	}
 	if opts.MinYear > 0 {
 		whereClauses = append(whereClauses, "t.media_year >= ?")
@@ -528,10 +503,14 @@ func (s *SQLiteStore) SearchByName(ctx context.Context, query string, opts Searc
 		args = append(args, opts.MaxYear)
 	}
 
+	var countQuerySb506 strings.Builder
+	var searchQuerySb506 strings.Builder
 	for _, clause := range whereClauses {
-		searchQuery += " AND " + clause
-		countQuery += " AND EXISTS (SELECT 1 FROM torrents t WHERE t.rowid = torrents_fts.rowid AND " + clause[len("t."):] + ")"
+		searchQuerySb506.WriteString(" AND " + clause)
+		countQuerySb506.WriteString(" AND EXISTS (SELECT 1 FROM torrents t WHERE t.rowid = torrents_fts.rowid AND " + clause[len("t."):] + ")")
 	}
+	countQuery += countQuerySb506.String()
+	searchQuery += searchQuerySb506.String()
 
 	countArgs := make([]interface{}, len(args))
 	copy(countArgs, args)
@@ -550,7 +529,7 @@ func (s *SQLiteStore) SearchByName(ctx context.Context, query string, opts Searc
 	}
 	defer func() { _ = rows.Close() }()
 
-	var torrents []*Torrent
+	torrents := make([]*Torrent, 0, 64)
 	for rows.Next() {
 		t, err := scanRow(rows)
 		if err != nil {
@@ -600,7 +579,7 @@ func (s *SQLiteStore) SearchByExternalID(ctx context.Context, id ExternalID) ([]
 	}
 	defer func() { _ = rows.Close() }()
 
-	var torrents []*Torrent
+	torrents := make([]*Torrent, 0, 64)
 	for rows.Next() {
 		t, err := scanRow(rows)
 		if err != nil {
@@ -639,7 +618,7 @@ func (s *SQLiteStore) FetchUnmatched(ctx context.Context, limit int) ([]*Torrent
 	}
 	defer func() { _ = rows.Close() }()
 
-	var torrents []*Torrent
+	torrents := make([]*Torrent, 0, 64)
 	for rows.Next() {
 		t, err := scanRow(rows)
 		if err != nil {
@@ -751,7 +730,7 @@ func (s *SQLiteStore) ListByMatchStatus(ctx context.Context, status MatchStatus,
 	}
 	defer func() { _ = rows.Close() }()
 
-	var torrents []*Torrent
+	torrents := make([]*Torrent, 0, 64)
 	for rows.Next() {
 		t, err := scanRow(rows)
 		if err != nil {
@@ -890,18 +869,13 @@ func (s *SQLiteStore) AreRejected(ctx context.Context, hashes [][]byte) (map[[20
 		return result, nil
 	}
 
-	placeholders := ""
 	args := make([]interface{}, len(hashes))
 	for i, h := range hashes {
-		if i > 0 {
-			placeholders += ","
-		}
-		placeholders += "?"
 		args[i] = h
 	}
 
 	//nolint:gosec // placeholders are parameterized
-	query := fmt.Sprintf(`SELECT info_hash FROM rejected_hashes WHERE info_hash IN (%s)`, placeholders)
+	query := fmt.Sprintf(`SELECT info_hash FROM rejected_hashes WHERE info_hash IN (%s)`, buildPlaceholders(len(hashes)))
 
 	rows, err := s.reader.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -1011,9 +985,9 @@ func (s *SQLiteStore) ListRecentlyUpdated(ctx context.Context, limit int) ([]*To
 	if err != nil {
 		return nil, fmt.Errorf("list recently updated: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
-	var torrents []*Torrent
+	torrents := make([]*Torrent, 0, 64)
 	for rows.Next() {
 		t, err := scanRow(rows)
 		if err != nil {
@@ -1030,9 +1004,9 @@ func (s *SQLiteStore) ListAllMatched(ctx context.Context) ([]*Torrent, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list stale for scrape: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
-	var torrents []*Torrent
+	torrents := make([]*Torrent, 0, 64)
 	for rows.Next() {
 		t, err := scanRow(rows)
 		if err != nil {
@@ -1128,7 +1102,7 @@ func (s *SQLiteStore) fetchPage(ctx context.Context, afterDiscoveredAt int64, af
 	}
 	defer func() { _ = rows.Close() }()
 
-	var torrents []*Torrent
+	torrents := make([]*Torrent, 0, 64)
 	for rows.Next() {
 		t, err := scanRow(rows)
 		if err != nil {

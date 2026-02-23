@@ -12,6 +12,7 @@ import (
 	"math"
 	"net"
 	"net/netip"
+	"sync"
 	"time"
 
 	"github.com/anacrolix/torrent/bencode"
@@ -19,6 +20,23 @@ import (
 	"github.com/magnetar/magnetar/internal/crawler/metainfo"
 	"github.com/magnetar/magnetar/internal/crawler/protocol"
 )
+
+// handshakePool reuses 68-byte buffers for BT handshakes.
+var handshakePool = sync.Pool{
+	New: func() interface{} {
+		b := make([]byte, 68)
+		return &b
+	},
+}
+
+// lengthPool reuses 4-byte buffers for message length reads.
+var lengthPool = sync.Pool{
+	New: func() interface{} {
+		b := make([]byte, 4)
+		return &b
+	},
+}
+
 
 type Requester interface {
 	Request(context.Context, protocol.ID, netip.AddrPort) (Response, error)
@@ -143,25 +161,29 @@ func (r requester) connect(ctx context.Context, addr netip.AddrPort) (conn *net.
 var myExBits = NewPeerExtensionBits(ExtensionBitDht, ExtensionBitLtep)
 
 func btHandshake(rw io.ReadWriter, infoHash protocol.ID, clientID protocol.ID) (HandshakeInfo, error) {
-	handshakeBytes := make([]byte, 0, 68)
+	hsBufPtr := handshakePool.Get().(*[]byte)
+	handshakeBytes := (*hsBufPtr)[:0]
 	handshakeBytes = append(handshakeBytes, peer_protocol.Protocol...)
 	handshakeBytes = append(handshakeBytes, myExBits[:]...)
 	handshakeBytes = append(handshakeBytes, infoHash[:]...)
 	handshakeBytes = append(handshakeBytes, clientID[:]...)
 
 	if n, hsErr := rw.Write(handshakeBytes); hsErr != nil {
+		handshakePool.Put(hsBufPtr)
 		return HandshakeInfo{}, hsErr
 	} else if n != 68 {
 		panic("handshake bytes must have length 68")
 	}
 
-	handshakeResponse := make([]byte, 68)
+	handshakeResponse := (*hsBufPtr)[:68] // reuse same buffer for response
 	if n, hsErr := io.ReadFull(rw, handshakeResponse); hsErr != nil {
+		handshakePool.Put(hsBufPtr)
 		return HandshakeInfo{},
 			fmt.Errorf("failed to read all handshake bytes (%d): %w / %s", n, hsErr, infoHash.String())
 	}
 
 	if !bytes.HasPrefix(handshakeResponse, []byte(peer_protocol.Protocol)) {
+		handshakePool.Put(hsBufPtr)
 		return HandshakeInfo{}, errors.New("invalid handshake response received")
 	}
 
@@ -169,18 +191,21 @@ func btHandshake(rw io.ReadWriter, infoHash protocol.ID, clientID protocol.ID) (
 	copy(peerExBits[:], handshakeResponse[20:28])
 
 	if !peerExBits.GetBit(ExtensionBitLtep) {
+		handshakePool.Put(hsBufPtr)
 		return HandshakeInfo{}, errors.New("peer does not support the extension protocol")
 	}
 
 	var resHash protocol.ID
 	copy(resHash[:], handshakeResponse[28:48])
 	if resHash != infoHash {
+		handshakePool.Put(hsBufPtr)
 		return HandshakeInfo{}, errors.New("infohash mismatch")
 	}
 
 	var resPeerID protocol.ID
 	copy(resPeerID[:], handshakeResponse[48:68])
 
+	handshakePool.Put(hsBufPtr)
 	return HandshakeInfo{
 		PeerID:            resPeerID,
 		PeerExtensionBits: peerExBits,
@@ -331,11 +356,14 @@ func readUmMessage(r io.Reader) ([]byte, error) {
 }
 
 func readMessage(r io.Reader) ([]byte, error) {
-	lengthBytes := make([]byte, 4)
-	if _, err := io.ReadFull(r, lengthBytes); err != nil {
+	lbPtr := lengthPool.Get().(*[]byte)
+	lb := *lbPtr
+	if _, err := io.ReadFull(r, lb); err != nil {
+		lengthPool.Put(lbPtr)
 		return nil, err
 	}
-	length := uint(binary.BigEndian.Uint32(lengthBytes))
+	length := uint(binary.BigEndian.Uint32(lb))
+	lengthPool.Put(lbPtr)
 	if length > maxMetadataSize {
 		return nil, errors.New("message is longer than max allowed metadata size")
 	}

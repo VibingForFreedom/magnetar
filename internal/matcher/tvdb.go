@@ -34,9 +34,9 @@ func NewTVDBClient(apiKey string) *TVDBClient {
 	}
 }
 
-func (c *TVDBClient) SearchSeries(ctx context.Context, title string, year int) (tvdbID int, err error) {
+func (c *TVDBClient) SearchSeries(ctx context.Context, title string, year int) (tvdbID int, firstAirYear int, err error) {
 	if err := c.ensureToken(ctx); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
 	params := url.Values{
@@ -50,19 +50,21 @@ func (c *TVDBClient) SearchSeries(ctx context.Context, title string, year int) (
 	var resp struct {
 		Data []struct {
 			TVDBID string `json:"tvdb_id"`
+			Year   string `json:"year"`
 		} `json:"data"`
 	}
 
 	if err := c.doGet(ctx, "/search", params, &resp); err != nil {
-		return 0, fmt.Errorf("tvdb search series: %w", err)
+		return 0, 0, fmt.Errorf("tvdb search series: %w", err)
 	}
 
 	if len(resp.Data) == 0 {
-		return 0, nil
+		return 0, 0, nil
 	}
 
 	id, _ := strconv.Atoi(resp.Data[0].TVDBID)
-	return id, nil
+	y, _ := strconv.Atoi(resp.Data[0].Year)
+	return id, y, nil
 }
 
 func (c *TVDBClient) SearchByIMDB(ctx context.Context, imdbID string) (tvdbID int, err error) {

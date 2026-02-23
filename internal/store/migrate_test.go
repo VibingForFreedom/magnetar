@@ -22,7 +22,7 @@ func TestRunMigration_SQLiteToSQLite(t *testing.T) {
 	// Seed source
 	src := newTestStoreAt(t, srcPath)
 	const count = 150
-	for i := 0; i < count; i++ {
+	for i := range count {
 		torrent := makeTestTorrent(makeInfoHash(), fmt.Sprintf("Migration Test %d", i))
 		torrent.DiscoveredAt = int64(1000 + i) // deterministic ordering
 		if err := src.UpsertTorrent(ctx, torrent); err != nil {
@@ -89,7 +89,7 @@ func TestRunMigration_Idempotent(t *testing.T) {
 
 	src := newTestStoreAt(t, srcPath)
 	const count = 30
-	for i := 0; i < count; i++ {
+	for i := range count {
 		torrent := makeTestTorrent(makeInfoHash(), fmt.Sprintf("Idempotent Test %d", i))
 		torrent.DiscoveredAt = int64(2000 + i)
 		if err := src.UpsertTorrent(ctx, torrent); err != nil {

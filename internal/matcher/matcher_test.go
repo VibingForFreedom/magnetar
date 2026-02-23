@@ -254,8 +254,8 @@ func TestTMDBClient_GetTVExternalIDs(t *testing.T) {
 
 func TestTMDBClient_GetAlternativeTitles(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/3/movie/872585/alternative_titles":
+		switch r.URL.Path {
+		case "/3/movie/872585/alternative_titles":
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"titles": []map[string]string{
 					{"title": "オッペンハイマー"},
@@ -263,7 +263,7 @@ func TestTMDBClient_GetAlternativeTitles(t *testing.T) {
 					{"title": "Oppenheimer"},
 				},
 			})
-		case r.URL.Path == "/3/tv/1399/alternative_titles":
+		case "/3/tv/1399/alternative_titles":
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"results": []map[string]string{
 					{"title": "Во все тяжкие"},
@@ -322,8 +322,8 @@ func TestTMDBClient_GetAlternativeTitles(t *testing.T) {
 
 func TestTMDBClient_GetTranslations(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/3/movie/872585/translations":
+		switch r.URL.Path {
+		case "/3/movie/872585/translations":
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"translations": []map[string]interface{}{
 					{"data": map[string]string{"title": "Oppenheimer", "overview": "..."}},
@@ -333,7 +333,7 @@ func TestTMDBClient_GetTranslations(t *testing.T) {
 					{"data": map[string]string{"title": "", "overview": "..."}}, // empty title
 				},
 			})
-		case r.URL.Path == "/3/tv/1399/translations":
+		case "/3/tv/1399/translations":
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"translations": []map[string]interface{}{
 					{"data": map[string]string{"name": "Breaking Bad", "overview": "..."}},

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -63,14 +64,14 @@ func RunMigration(ctx context.Context, mcfg MigrationConfig) error {
 
 	fetcher, ok := src.(pageFetcher)
 	if !ok {
-		return fmt.Errorf("source store does not support page fetching")
+		return errors.New("source store does not support page fetching")
 	}
 
 	var (
-		migrated         int64
+		migrated          int64
 		afterDiscoveredAt int64
-		afterInfoHash    []byte
-		startTime        = time.Now()
+		afterInfoHash     []byte
+		startTime         = time.Now()
 	)
 
 	for {

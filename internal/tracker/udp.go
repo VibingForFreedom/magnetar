@@ -3,6 +3,7 @@ package tracker
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"math/rand/v2"
@@ -11,10 +12,10 @@ import (
 )
 
 const (
-	udpConnectMagic  = 0x41727101980
-	udpActionConnect = 0
+	udpConnectMagic   = 0x41727101980
+	udpActionConnect  = 0
 	udpActionAnnounce = 1
-	udpActionScrape  = 2
+	udpActionScrape   = 2
 
 	// maxUDPBatchSize is the max hashes per UDP scrape request.
 	// Header is 16 bytes, each hash is 20 bytes. To fit in a standard
@@ -167,7 +168,7 @@ func announceUDP(ctx context.Context, host string, infoHash [20]byte) ([]netip.A
 	// Build announce request (98 bytes)
 	txnID := rand.Uint32() //nolint:gosec // not cryptographic
 	req := make([]byte, 98)
-	binary.BigEndian.PutUint64(req[0:8], connectionID)      // connection_id
+	binary.BigEndian.PutUint64(req[0:8], connectionID)       // connection_id
 	binary.BigEndian.PutUint32(req[8:12], udpActionAnnounce) // action=1
 	binary.BigEndian.PutUint32(req[12:16], txnID)            // transaction_id
 	copy(req[16:36], infoHash[:])                            // info_hash
@@ -183,14 +184,14 @@ func announceUDP(ctx context.Context, host string, infoHash [20]byte) ([]netip.A
 	copy(req[36:56], peerID[:])
 
 	// downloaded=0, left=maxint64, uploaded=0
-	binary.BigEndian.PutUint64(req[56:64], 0)                  // downloaded
-	binary.BigEndian.PutUint64(req[64:72], math.MaxInt64)      // left
-	binary.BigEndian.PutUint64(req[72:80], 0)                  // uploaded
-	binary.BigEndian.PutUint32(req[80:84], 0)                  // event (0=none)
-	binary.BigEndian.PutUint32(req[84:88], 0)                  // IP (0=default)
-	binary.BigEndian.PutUint32(req[88:92], rand.Uint32())      // key //nolint:gosec
-	binary.BigEndian.PutUint32(req[92:96], 50)                 // num_want
-	binary.BigEndian.PutUint16(req[96:98], 6881)               // port
+	binary.BigEndian.PutUint64(req[56:64], 0)             // downloaded
+	binary.BigEndian.PutUint64(req[64:72], math.MaxInt64) // left
+	binary.BigEndian.PutUint64(req[72:80], 0)             // uploaded
+	binary.BigEndian.PutUint32(req[80:84], 0)             // event (0=none)
+	binary.BigEndian.PutUint32(req[84:88], 0)             // IP (0=default)
+	binary.BigEndian.PutUint32(req[88:92], rand.Uint32()) // key //nolint:gosec
+	binary.BigEndian.PutUint32(req[92:96], 50)            // num_want
+	binary.BigEndian.PutUint16(req[96:98], 6881)          // port
 
 	if _, err := conn.Write(req); err != nil {
 		return nil, fmt.Errorf("sending announce: %w", err)
@@ -239,5 +240,5 @@ func scrapeUDP(ctx context.Context, host string, infoHash [20]byte) (ScrapeEntry
 	if entry, ok := results[infoHash]; ok {
 		return entry, nil
 	}
-	return ScrapeEntry{}, fmt.Errorf("info hash not found in scrape response")
+	return ScrapeEntry{}, errors.New("info hash not found in scrape response")
 }

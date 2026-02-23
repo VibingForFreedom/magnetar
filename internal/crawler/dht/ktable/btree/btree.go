@@ -3,6 +3,7 @@ package btree
 import (
 	"encoding/hex"
 	"errors"
+	"strings"
 )
 
 type Btree interface {
@@ -50,15 +51,16 @@ func (b Bits) Cmp(other Bits) int {
 }
 
 func (b Bits) String() string {
-	str := ""
+	var sb strings.Builder
+	sb.Grow(len(b))
 	for _, bit := range b {
 		if bit {
-			str += "1"
+			sb.WriteByte('1')
 		} else {
-			str += "0"
+			sb.WriteByte('0')
 		}
 	}
-	return str
+	return sb.String()
 }
 
 func ParseBinaryNodeID(str string) (NodeID, error) {

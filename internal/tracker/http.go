@@ -3,6 +3,7 @@ package tracker
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand/v2"
@@ -137,12 +138,12 @@ func decodeAnnounceResponse(data []byte) ([]netip.AddrPort, error) {
 
 	peersRaw, ok := d["peers"]
 	if !ok {
-		return nil, fmt.Errorf("no peers key in announce response")
+		return nil, errors.New("no peers key in announce response")
 	}
 
 	peersBytes, ok := peersRaw.([]byte)
 	if !ok {
-		return nil, fmt.Errorf("peers value is not raw bytes")
+		return nil, errors.New("peers value is not raw bytes")
 	}
 
 	// The peers value is a bencoded string containing compact 6-byte peers.
@@ -176,5 +177,5 @@ func scrapeHTTP(ctx context.Context, client *http.Client, scrapeURL string, info
 	if entry, ok := results[infoHash]; ok {
 		return entry, nil
 	}
-	return ScrapeEntry{}, fmt.Errorf("info hash not found in scrape response")
+	return ScrapeEntry{}, errors.New("info hash not found in scrape response")
 }

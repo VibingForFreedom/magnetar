@@ -20,6 +20,7 @@ func NewBatchingChannel[T any](capacity int, maxBatchSize int, maxWaitTime time.
 	ch := &batchingChannel[T]{
 		input:        make(chan T, capacity),
 		output:       make(chan []T, 1),
+		buffer:       make([]T, 0, maxBatchSize),
 		maxBatchSize: maxBatchSize,
 		maxWaitTime:  maxWaitTime,
 		ticker:       time.NewTicker(maxWaitTime),
@@ -61,7 +62,7 @@ func (ch *batchingChannel[T]) batch() {
 func (ch *batchingChannel[T]) flush() {
 	ch.ticker.Stop()
 	batch := ch.buffer
-	ch.buffer = nil
+	ch.buffer = make([]T, 0, ch.maxBatchSize)
 	ch.ticker.Reset(ch.maxWaitTime)
 	ch.output <- batch
 }

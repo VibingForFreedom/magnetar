@@ -139,6 +139,23 @@ func scanRow(s scanner) (*Torrent, error) {
 	return t, nil
 }
 
+// buildPlaceholders returns a comma-separated "?,?,?" string for n items
+// using strings.Builder to avoid O(n^2) string concatenation.
+func buildPlaceholders(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.Grow(n*2 - 1) // "?" + "," per item minus last comma
+	for i := range n {
+		if i > 0 {
+			sb.WriteByte(',')
+		}
+		sb.WriteByte('?')
+	}
+	return sb.String()
+}
+
 // torrentSelectColumns is the standard SELECT column list for torrents.
 const torrentSelectColumns = `info_hash, name, size, category, quality, files,
 	imdb_id, tmdb_id, tvdb_id, anilist_id, kitsu_id, media_year,

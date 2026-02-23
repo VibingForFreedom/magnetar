@@ -205,12 +205,15 @@ func TestSearchSeriesCacheHit(t *testing.T) {
 		Do(ctx, matchExpire("magnetar:tvdb:series:breakingbad:2008")).
 		Return(mock.Result(mock.ValkeyInt64(1)))
 
-	tvdbID, err := cache.SearchSeries(ctx, nil, "Breaking Bad", 2008)
+	tvdbID, year, err := cache.SearchSeries(ctx, nil, "Breaking Bad", 2008)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if tvdbID != 12345 {
 		t.Errorf("tvdbID = %d, want 12345", tvdbID)
+	}
+	if year != 2020 {
+		t.Errorf("year = %d, want 2020", year)
 	}
 }
 
@@ -447,12 +450,15 @@ func TestSearchSeriesNegativeCache(t *testing.T) {
 		Do(ctx, mock.Match("GET", "magnetar:tvdb:series:nonexistent:0")).
 		Return(mock.Result(mock.ValkeyBlobString(negativeSentinel)))
 
-	tvdbID, err := cache.SearchSeries(ctx, nil, "nonexistent", 0)
+	tvdbID, year, err := cache.SearchSeries(ctx, nil, "nonexistent", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if tvdbID != 0 {
 		t.Errorf("expected 0 for negative cache, got %d", tvdbID)
+	}
+	if year != 0 {
+		t.Errorf("expected 0 year for negative cache, got %d", year)
 	}
 }
 

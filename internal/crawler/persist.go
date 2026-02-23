@@ -193,6 +193,9 @@ func (c *Crawler) fireTrackerScrapes(ctx context.Context, torrents []*store.Torr
 			c.metrics.TrackerScrapeSuccesses.Add(1)
 
 			t := hashToTorrent[h]
+			if t == nil {
+				continue
+			}
 			if r.Seeders > t.Seeders || r.Leechers > t.Leechers {
 				seeders := t.Seeders
 				if r.Seeders > seeders {

@@ -209,7 +209,7 @@ func (m *Matcher) processBatch(ctx context.Context) {
 		return
 	}
 
-	m.processWithWorkers(ctx, torrents)
+	m.processWithWorkersTier(ctx, torrents, tier)
 }
 
 // scaleTMDB adjusts the TMDB rate limiter and returns the worker count
@@ -230,7 +230,10 @@ func (m *Matcher) scaleTMDB(backlog int) scaleTier {
 // processWithWorkers fans out torrent matching across a dynamic worker pool.
 // The TMDB rate limiter is shared across all workers, so they naturally throttle.
 func (m *Matcher) processWithWorkers(ctx context.Context, torrents []*store.Torrent) {
-	tier := tierForBacklog(len(torrents))
+	m.processWithWorkersTier(ctx, torrents, tierForBacklog(len(torrents)))
+}
+
+func (m *Matcher) processWithWorkersTier(ctx context.Context, torrents []*store.Torrent, tier scaleTier) {
 	workers := tier.workers
 	if workers > len(torrents) {
 		workers = len(torrents)
@@ -268,7 +271,7 @@ func (m *Matcher) processWithWorkers(ctx context.Context, torrents []*store.Torr
 							"error", err,
 						)
 					}
-					m.metrics.MatchFailures.Add(1)
+					m.metrics.MatchJunk.Add(1)
 					continue
 				}
 
@@ -279,6 +282,16 @@ func (m *Matcher) processWithWorkers(ctx context.Context, torrents []*store.Torr
 					m.metrics.RecordMatch(1)
 				} else {
 					m.metrics.MatchFailures.Add(1)
+					// Reset category to unknown on failure — the classifier
+					// may have guessed wrong (e.g. adult content with 1080p tag → movie)
+					if t.Category != store.CategoryUnknown {
+						if err := m.store.UpdateCategory(ctx, t.InfoHash, store.CategoryUnknown); err != nil {
+							m.logger.Error("resetting category on failure",
+								"info_hash", t.InfoHashHex(),
+								"error", err,
+							)
+						}
+					}
 				}
 				if err := m.store.UpdateMatchResult(ctx, t.InfoHash, result); err != nil {
 					m.logger.Error("updating match result",
@@ -468,6 +481,26 @@ func (m *Matcher) matchTV(ctx context.Context, t *store.Torrent, parsed *classif
 	}
 
 	if tmdbID == 0 {
+		// TMDB found nothing — try TVDB as fallback
+		if m.tvdb != nil {
+			tvdbID, tvdbYear, tvdbErr := m.cache.SearchSeries(ctx, m.tvdb, title, year)
+			if tvdbErr == nil && tvdbID == 0 && year > 0 {
+				tvdbID, tvdbYear, tvdbErr = m.cache.SearchSeries(ctx, m.tvdb, title, 0)
+			}
+			if tvdbErr == nil && tvdbID > 0 {
+				result := store.MatchResult{
+					Status: store.MatchMatched,
+					TVDBID: tvdbID,
+					Year:   tvdbYear,
+				}
+				m.logger.Info("matched tv via tvdb fallback",
+					"info_hash", t.InfoHashHex(),
+					"title", title,
+					"tvdb_id", tvdbID,
+				)
+				return result
+			}
+		}
 		return m.failResult(t)
 	}
 
@@ -487,7 +520,7 @@ func (m *Matcher) matchTV(ctx context.Context, t *store.Torrent, parsed *classif
 
 	// If TVDB ID still missing, try TVDB directly
 	if result.TVDBID == 0 && m.tvdb != nil {
-		if tvdbID, err := m.cache.SearchSeries(ctx, m.tvdb, title, year); err == nil && tvdbID > 0 {
+		if tvdbID, _, err := m.cache.SearchSeries(ctx, m.tvdb, title, year); err == nil && tvdbID > 0 {
 			result.TVDBID = tvdbID
 		}
 	}

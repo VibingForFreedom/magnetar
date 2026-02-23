@@ -2,7 +2,7 @@ package api
 
 import (
 	"encoding/xml"
-	"fmt"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -45,12 +45,12 @@ type torznabError struct {
 }
 
 type torznabItem struct {
-	Title string           `xml:"title"`
-	GUID  string           `xml:"guid"`
-	Size  int64            `xml:"size"`
+	Title     string           `xml:"title"`
+	GUID      string           `xml:"guid"`
+	Size      int64            `xml:"size"`
 	Enclosure torznabEnclosure `xml:"enclosure"`
 	PubDate   string           `xml:"pubDate"`
-	Attrs []itemAttr       `xml:"torznab:attr"`
+	Attrs     []itemAttr       `xml:"torznab:attr"`
 }
 
 type torznabEnclosure struct {
@@ -228,24 +228,24 @@ func buildExternalID(imdbRaw, tmdbRaw, tvdbRaw string) (store.ExternalID, error)
 	if imdbRaw != "" {
 		imdbNumeric := strings.TrimPrefix(strings.ToLower(imdbRaw), "tt")
 		if imdbNumeric == "" {
-			return store.ExternalID{}, fmt.Errorf("invalid imdbid")
+			return store.ExternalID{}, errors.New("invalid imdbid")
 		}
 		if _, err := strconv.Atoi(imdbNumeric); err != nil {
-			return store.ExternalID{}, fmt.Errorf("invalid imdbid")
+			return store.ExternalID{}, errors.New("invalid imdbid")
 		}
 		return store.ExternalID{Type: "imdb", Value: "tt" + imdbNumeric}, nil
 	}
 	if tmdbRaw != "" {
 		tmdbRaw = strings.TrimSpace(tmdbRaw)
 		if _, err := strconv.Atoi(tmdbRaw); err != nil {
-			return store.ExternalID{}, fmt.Errorf("invalid tmdbid")
+			return store.ExternalID{}, errors.New("invalid tmdbid")
 		}
 		return store.ExternalID{Type: "tmdb", Value: tmdbRaw}, nil
 	}
 	if tvdbRaw != "" {
 		tvdbRaw = strings.TrimSpace(tvdbRaw)
 		if _, err := strconv.Atoi(tvdbRaw); err != nil {
-			return store.ExternalID{}, fmt.Errorf("invalid tvdbid")
+			return store.ExternalID{}, errors.New("invalid tvdbid")
 		}
 		return store.ExternalID{Type: "tvdb", Value: tvdbRaw}, nil
 	}

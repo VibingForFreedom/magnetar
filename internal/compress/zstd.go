@@ -21,6 +21,11 @@ var (
 			return r
 		},
 	}
+	bufPool = sync.Pool{
+		New: func() interface{} {
+			return new(bytes.Buffer)
+		},
+	}
 )
 
 func Compress(data []byte) ([]byte, error) {
@@ -31,8 +36,11 @@ func Compress(data []byte) ([]byte, error) {
 	enc := encoderPool.Get().(*zstd.Encoder)
 	defer encoderPool.Put(enc)
 
-	var buf bytes.Buffer
-	enc.Reset(&buf)
+	buf := bufPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer bufPool.Put(buf)
+
+	enc.Reset(buf)
 
 	_, err := enc.Write(data)
 	if err != nil {

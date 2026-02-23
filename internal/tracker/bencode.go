@@ -1,6 +1,7 @@
 package tracker
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 )
@@ -28,13 +29,13 @@ func decodeScrapeResponse(data []byte) (map[[20]byte]ScrapeEntry, error) {
 
 	filesBytes, ok := filesRaw.([]byte)
 	if !ok {
-		return nil, fmt.Errorf("files value is not raw bytes")
+		return nil, errors.New("files value is not raw bytes")
 	}
 
 	// Parse the files dict: keys are 20-byte info hashes, values are dicts
 	pos := 0
 	if pos >= len(filesBytes) || filesBytes[pos] != 'd' {
-		return nil, fmt.Errorf("files is not a dict")
+		return nil, errors.New("files is not a dict")
 	}
 	pos++
 
@@ -61,7 +62,7 @@ func decodeScrapeResponse(data []byte) (map[[20]byte]ScrapeEntry, error) {
 
 		// Parse the inner dict for complete/incomplete
 		if pos >= len(filesBytes) || filesBytes[pos] != 'd' {
-			return nil, fmt.Errorf("expected dict for hash entry")
+			return nil, errors.New("expected dict for hash entry")
 		}
 		pos++
 
