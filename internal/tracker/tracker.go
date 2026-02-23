@@ -37,7 +37,7 @@ type trackerState struct {
 type Scraper struct {
 	cfg    *config.Config
 	logger *slog.Logger
-	client *http.Client
+	client atomic.Pointer[http.Client]
 
 	mu       sync.RWMutex
 	trackers []trackerURL
@@ -51,8 +51,8 @@ func New(cfg *config.Config, logger *slog.Logger) *Scraper {
 	s := &Scraper{
 		cfg:    cfg,
 		logger: logger.With("component", "tracker_scraper"),
-		client: &http.Client{Timeout: cfg.TrackerTimeout},
 	}
+	s.client.Store(&http.Client{Timeout: cfg.TrackerTimeout})
 	s.parseTrackers()
 	return s
 }
@@ -61,17 +61,22 @@ func New(cfg *config.Config, logger *slog.Logger) *Scraper {
 func (s *Scraper) Reconfigure() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.client.Timeout = s.cfg.TrackerTimeout
+	s.cfg.RLock()
+	timeout := s.cfg.TrackerTimeout
+	enabled := s.cfg.TrackerEnabled
+	s.cfg.RUnlock()
+	s.client.Store(&http.Client{Timeout: timeout})
 	s.parseTrackers()
 	s.logger.Info("tracker scraper reconfigured",
-		"enabled", s.cfg.TrackerEnabled,
+		"enabled", enabled,
 		"trackers", len(s.trackers),
 	)
 }
 
 func (s *Scraper) parseTrackers() {
-	trackers := make([]trackerURL, 0, len(s.cfg.TrackerList))
-	for _, raw := range s.cfg.TrackerList {
+	list := s.cfg.GetTrackerList()
+	trackers := make([]trackerURL, 0, len(list))
+	for _, raw := range list {
 		t, err := parseTrackerURL(raw)
 		if err != nil {
 			s.logger.Warn("skipping invalid tracker URL", "url", raw, "error", err)
@@ -238,7 +243,7 @@ func (s *Scraper) scrapeTrackerBatch(ctx context.Context, t trackerURL, hashes [
 		case protoUDP:
 			entries, err = scrapeUDPBatch(ctx, t.host, chunk)
 		case protoHTTP:
-			entries, err = scrapeHTTPBatch(ctx, s.client, t.scrapeURL, chunk)
+			entries, err = scrapeHTTPBatch(ctx, s.client.Load(), t.scrapeURL, chunk)
 		}
 
 		if err != nil {
@@ -315,7 +320,7 @@ func (s *Scraper) AnnouncePeers(ctx context.Context, infoHash [20]byte) []netip.
 			case protoUDP:
 				peers, err = announceUDP(announceCtx, t.host, infoHash)
 			case protoHTTP:
-				peers, err = announceHTTP(announceCtx, s.client, t.announceURL, infoHash)
+				peers, err = announceHTTP(announceCtx, s.client.Load(), t.announceURL, infoHash)
 			}
 
 			if err != nil {

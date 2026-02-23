@@ -22,6 +22,7 @@ type Server interface {
 
 type server struct {
 	stopped          chan struct{}
+	stopOnce         sync.Once
 	mutex            sync.Mutex
 	localAddr        netip.AddrPort
 	socket           Socket
@@ -51,7 +52,7 @@ func (s *server) Start() error {
 }
 
 func (s *server) Stop() {
-	close(s.stopped)
+	s.stopOnce.Do(func() { close(s.stopped) })
 }
 
 func (s *server) read(ctx context.Context) {
@@ -75,12 +76,11 @@ func (s *server) read(ctx context.Context) {
 
 		n, from, err := s.socket.Receive(buffer)
 		if err != nil {
-			// Socket is probably closed; if we're not shutting down then panic
-			if ctx.Err() == nil {
-				panic(fmt.Errorf("socket read error: %w", err))
+			if ctx.Err() != nil {
+				return // shutting down
 			}
-
-			return
+			s.logger.Error("socket read error", "error", err)
+			continue
 		}
 
 		if n == 0 {

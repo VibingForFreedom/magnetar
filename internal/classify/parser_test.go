@@ -806,12 +806,12 @@ func TestIsJunkWithAdultNames(t *testing.T) {
 	origPerformers := adultPerformers
 	origStudios := adultStudios
 	origKeywords := adultKeywords
-	origCfg := filterCfg
+	origCfg := GetFilterConfig()
 	defer func() {
 		adultPerformers = origPerformers
 		adultStudios = origStudios
 		adultKeywords = origKeywords
-		filterCfg = origCfg
+		SetFilterConfig(origCfg)
 	}()
 
 	adultPerformers = map[string]bool{
@@ -849,8 +849,8 @@ func TestIsJunkWithAdultNames(t *testing.T) {
 }
 
 func TestFilterConfigToggles(t *testing.T) {
-	origCfg := filterCfg
-	defer func() { filterCfg = origCfg }()
+	origCfg := GetFilterConfig()
+	defer func() { SetFilterConfig(origCfg) }()
 
 	// With adult patterns disabled, JAV codes should pass
 	SetFilterConfig(FilterConfig{

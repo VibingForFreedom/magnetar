@@ -60,9 +60,14 @@ type settingsAPI struct {
 	AuthEnabled bool `json:"auth_enabled"`
 }
 
+type settingsPutRequestRaw struct {
+	Key   string          `json:"key"`
+	Value json.RawMessage `json:"value"`
+}
+
 type settingsPutRequest struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
+	Key   string
+	Value string
 }
 
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
@@ -77,7 +82,9 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSettingsGet(w http.ResponseWriter) {
-	trackers := s.cfg.TrackerList
+	s.cfg.RLock()
+	trackers := make([]string, len(s.cfg.TrackerList))
+	copy(trackers, s.cfg.TrackerList)
 	if trackers == nil {
 		trackers = []string{}
 	}
@@ -119,21 +126,36 @@ func (s *Server) handleSettingsGet(w http.ResponseWriter) {
 			AuthEnabled: s.cfg.APIKey != "",
 		},
 	}
+	isSQLite := s.cfg.IsSQLite()
+	dbPath := s.cfg.DBPath
+	s.cfg.RUnlock()
 
-	if s.cfg.IsSQLite() {
-		resp.Database.Path = s.cfg.DBPath
+	if isSQLite {
+		resp.Database.Path = dbPath
 	}
 
 	s.writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
-	var req settingsPutRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	var raw settingsPutRequestRaw
+	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 
+	// Coerce value to string — accept string, number, or boolean JSON values.
+	var valueStr string
+	if len(raw.Value) > 0 && raw.Value[0] == '"' {
+		if err := json.Unmarshal(raw.Value, &valueStr); err != nil {
+			s.writeError(w, http.StatusBadRequest, "invalid value")
+			return
+		}
+	} else {
+		valueStr = strings.Trim(string(raw.Value), " ")
+	}
+
+	req := settingsPutRequest{Key: raw.Key, Value: valueStr}
 	req.Key = strings.TrimSpace(req.Key)
 	if req.Key == "" {
 		s.writeError(w, http.StatusBadRequest, "key is required")
@@ -159,11 +181,14 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 
 	// Sync classify filter config when filter keys change
 	if strings.HasPrefix(req.Key, "filter_") {
-		classify.SetFilterConfig(classify.FilterConfig{
+		s.cfg.RLock()
+		filterCfg := classify.FilterConfig{
 			FilterAdultPatterns: s.cfg.FilterAdultPatterns,
 			FilterAdultNames:    s.cfg.FilterAdultNames,
 			FilterJunkNames:     s.cfg.FilterJunkNames,
-		})
+		}
+		s.cfg.RUnlock()
+		classify.SetFilterConfig(filterCfg)
 	}
 
 	requiresRestart := req.Key == config.KeyCrawlWorkers

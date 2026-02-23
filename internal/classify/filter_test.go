@@ -164,8 +164,8 @@ func TestIsJunkMusicFiltering(t *testing.T) {
 		},
 	}
 
-	origCfg := filterCfg
-	defer func() { filterCfg = origCfg }()
+	origCfg := GetFilterConfig()
+	defer func() { SetFilterConfig(origCfg) }()
 	SetFilterConfig(DefaultFilterConfig())
 
 	for _, tt := range tests {

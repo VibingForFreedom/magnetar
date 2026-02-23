@@ -32,10 +32,10 @@ func (s *MariaDBStore) SetTaskRegistry(r *tasklog.Registry) {
 // NewMariaDBStore creates a new MariaDB-backed store.
 func NewMariaDBStore(ctx context.Context, cfg *config.Config) (*MariaDBStore, error) {
 	if cfg == nil {
-		return nil, fmt.Errorf("config is required")
+		return nil, errors.New("config is required")
 	}
 	if cfg.DBDSN == "" {
-		return nil, fmt.Errorf("DB_DSN is required for MariaDB backend")
+		return nil, errors.New("DB_DSN is required for MariaDB backend")
 	}
 
 	db, err := sql.Open("mysql", cfg.DBDSN)
@@ -270,18 +270,13 @@ func (s *MariaDBStore) BulkLookup(ctx context.Context, hashes [][]byte) ([]*Torr
 		}
 	}
 
-	placeholders := ""
 	args := make([]interface{}, len(hashes))
 	for i, h := range hashes {
-		if i > 0 {
-			placeholders += ","
-		}
-		placeholders += "?"
 		args[i] = h
 	}
 
 	//nolint:gosec // placeholders are parameterized, column list is static
-	query := fmt.Sprintf(`SELECT `+torrentSelectColumns+` FROM torrents WHERE info_hash IN (%s)`, placeholders)
+	query := fmt.Sprintf(`SELECT `+torrentSelectColumns+` FROM torrents WHERE info_hash IN (%s)`, buildPlaceholders(len(hashes)))
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -289,7 +284,7 @@ func (s *MariaDBStore) BulkLookup(ctx context.Context, hashes [][]byte) ([]*Torr
 	}
 	defer func() { _ = rows.Close() }()
 
-	var torrents []*Torrent
+	torrents := make([]*Torrent, 0, len(hashes))
 	for rows.Next() {
 		t, err := scanRow(rows)
 		if err != nil {
@@ -342,26 +337,16 @@ func (s *MariaDBStore) ListRecent(ctx context.Context, opts SearchOpts) (*Search
 	var whereClauses []string
 
 	if len(opts.Categories) > 0 {
-		placeholders := ""
-		for i, cat := range opts.Categories {
-			if i > 0 {
-				placeholders += ","
-			}
-			placeholders += "?"
+		for _, cat := range opts.Categories {
 			args = append(args, cat)
 		}
-		whereClauses = append(whereClauses, fmt.Sprintf("category IN (%s)", placeholders))
+		whereClauses = append(whereClauses, fmt.Sprintf("category IN (%s)", buildPlaceholders(len(opts.Categories))))
 	}
 	if len(opts.Quality) > 0 {
-		placeholders := ""
-		for i, q := range opts.Quality {
-			if i > 0 {
-				placeholders += ","
-			}
-			placeholders += "?"
+		for _, q := range opts.Quality {
 			args = append(args, q)
 		}
-		whereClauses = append(whereClauses, fmt.Sprintf("quality IN (%s)", placeholders))
+		whereClauses = append(whereClauses, fmt.Sprintf("quality IN (%s)", buildPlaceholders(len(opts.Quality))))
 	}
 
 	if len(whereClauses) > 0 {
@@ -387,7 +372,7 @@ func (s *MariaDBStore) ListRecent(ctx context.Context, opts SearchOpts) (*Search
 	}
 	defer func() { _ = rows.Close() }()
 
-	var torrents []*Torrent
+	torrents := make([]*Torrent, 0, limit)
 	for rows.Next() {
 		t, err := scanRow(rows)
 		if err != nil {
@@ -427,26 +412,16 @@ func (s *MariaDBStore) SearchByName(ctx context.Context, query string, opts Sear
 
 	var whereClauses []string
 	if len(opts.Categories) > 0 {
-		placeholders := ""
-		for i, cat := range opts.Categories {
-			if i > 0 {
-				placeholders += ","
-			}
-			placeholders += "?"
+		for _, cat := range opts.Categories {
 			args = append(args, cat)
 		}
-		whereClauses = append(whereClauses, fmt.Sprintf("category IN (%s)", placeholders))
+		whereClauses = append(whereClauses, fmt.Sprintf("category IN (%s)", buildPlaceholders(len(opts.Categories))))
 	}
 	if len(opts.Quality) > 0 {
-		placeholders := ""
-		for i, q := range opts.Quality {
-			if i > 0 {
-				placeholders += ","
-			}
-			placeholders += "?"
+		for _, q := range opts.Quality {
 			args = append(args, q)
 		}
-		whereClauses = append(whereClauses, fmt.Sprintf("quality IN (%s)", placeholders))
+		whereClauses = append(whereClauses, fmt.Sprintf("quality IN (%s)", buildPlaceholders(len(opts.Quality))))
 	}
 	if opts.MinYear > 0 {
 		whereClauses = append(whereClauses, "media_year >= ?")
@@ -457,10 +432,14 @@ func (s *MariaDBStore) SearchByName(ctx context.Context, query string, opts Sear
 		args = append(args, opts.MaxYear)
 	}
 
+	var countSQLSb435 strings.Builder
+	var searchSQLSb435 strings.Builder
 	for _, clause := range whereClauses {
-		searchSQL += " AND " + clause
-		countSQL += " AND " + clause
+		searchSQLSb435.WriteString(" AND " + clause)
+		countSQLSb435.WriteString(" AND " + clause)
 	}
+	countSQL += countSQLSb435.String()
+	searchSQL += searchSQLSb435.String()
 
 	countArgs := make([]interface{}, len(args))
 	copy(countArgs, args)
@@ -479,7 +458,7 @@ func (s *MariaDBStore) SearchByName(ctx context.Context, query string, opts Sear
 	}
 	defer func() { _ = rows.Close() }()
 
-	var torrents []*Torrent
+	torrents := make([]*Torrent, 0, limit)
 	for rows.Next() {
 		t, err := scanRow(rows)
 		if err != nil {
@@ -814,18 +793,13 @@ func (s *MariaDBStore) AreRejected(ctx context.Context, hashes [][]byte) (map[[2
 		return result, nil
 	}
 
-	placeholders := ""
 	args := make([]interface{}, len(hashes))
 	for i, h := range hashes {
-		if i > 0 {
-			placeholders += ","
-		}
-		placeholders += "?"
 		args[i] = h
 	}
 
 	//nolint:gosec // placeholders are parameterized
-	query := fmt.Sprintf(`SELECT info_hash FROM rejected_hashes WHERE info_hash IN (%s)`, placeholders)
+	query := fmt.Sprintf(`SELECT info_hash FROM rejected_hashes WHERE info_hash IN (%s)`, buildPlaceholders(len(hashes)))
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -879,10 +853,9 @@ func (s *MariaDBStore) PurgeJunkTorrents(ctx context.Context) (int64, error) {
 }
 
 func (s *MariaDBStore) Close() error {
-	if s.closed.Load() {
+	if !s.closed.CompareAndSwap(false, true) {
 		return nil
 	}
-	s.closed.Store(true)
 
 	if err := s.db.Close(); err != nil {
 		return fmt.Errorf("closing mariadb connection: %w", err)
@@ -915,7 +888,7 @@ func (s *MariaDBStore) ListRecentlyUpdated(ctx context.Context, limit int) ([]*T
 	if err != nil {
 		return nil, fmt.Errorf("list recently updated: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var torrents []*Torrent
 	for rows.Next() {
@@ -934,7 +907,7 @@ func (s *MariaDBStore) ListAllMatched(ctx context.Context) ([]*Torrent, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list stale for scrape: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var torrents []*Torrent
 	for rows.Next() {

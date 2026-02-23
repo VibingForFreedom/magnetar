@@ -1,5 +1,7 @@
 package classify
 
+import "sync/atomic"
+
 // FilterConfig controls which content filters are active.
 // All filters are enabled by default.
 type FilterConfig struct {
@@ -20,15 +22,26 @@ func DefaultFilterConfig() FilterConfig {
 	}
 }
 
-var filterCfg = DefaultFilterConfig()
+var filterCfgPtr atomic.Pointer[FilterConfig]
+
+func init() {
+	cfg := DefaultFilterConfig()
+	filterCfgPtr.Store(&cfg)
+}
 
 // SetFilterConfig updates the package-level filter configuration.
-// Call once at startup after loading settings, and again when settings change.
+// Safe for concurrent use.
 func SetFilterConfig(cfg FilterConfig) {
-	filterCfg = cfg
+	filterCfgPtr.Store(&cfg)
 }
 
 // GetFilterConfig returns the current filter configuration.
+// Safe for concurrent use.
 func GetFilterConfig() FilterConfig {
-	return filterCfg
+	return *filterCfgPtr.Load()
+}
+
+// loadFilterCfg returns the current config for internal use.
+func loadFilterCfg() FilterConfig {
+	return *filterCfgPtr.Load()
 }

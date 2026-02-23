@@ -1,16 +1,19 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/joho/godotenv"
 )
 
 type Config struct {
+	mu sync.RWMutex
 	Port     int
 	APIKey   string
 	LogLevel string
@@ -48,7 +51,7 @@ type Config struct {
 	FilterAdultNames    bool
 	FilterJunkNames     bool
 
-	BackupEnabled bool
+	BackupEnabled  bool
 	BackupPath     string
 	BackupSchedule string
 	BackupRetain   int
@@ -82,7 +85,7 @@ func Load() (*Config, error) {
 		CrawlPort:    getEnvInt("MAGNETAR_CRAWL_PORT", 6881),
 
 		MatchEnabled:     getEnvBool("MAGNETAR_MATCH_ENABLED", true),
-		MatchBatchSize:   getEnvInt("MAGNETAR_MATCH_BATCH_SIZE", 100),
+		MatchBatchSize:   getEnvInt("MAGNETAR_MATCH_BATCH_SIZE", 500),
 		MatchInterval:    getEnvDuration("MAGNETAR_MATCH_INTERVAL", 10*time.Second),
 		MatchMaxAttempts: getEnvInt("MAGNETAR_MATCH_MAX_ATTEMPTS", 4),
 		TMDBAPIKey:       getEnvString("MAGNETAR_TMDB_API_KEY", ""),
@@ -116,6 +119,20 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
+// RLock acquires a read lock on the config. Use when reading multiple
+// fields that must be consistent with each other.
+func (c *Config) RLock()   { c.mu.RLock() }
+func (c *Config) RUnlock() { c.mu.RUnlock() }
+
+// GetTrackerList returns a copy of the tracker list, safe for concurrent use.
+func (c *Config) GetTrackerList() []string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	cp := make([]string, len(c.TrackerList))
+	copy(cp, c.TrackerList)
+	return cp
+}
+
 func (c *Config) IsSQLite() bool {
 	return strings.ToLower(c.DBBackend) == "sqlite"
 }
@@ -130,7 +147,7 @@ func (c *Config) Validate() error {
 	}
 
 	if c.IsMariaDB() && c.DBDSN == "" {
-		return fmt.Errorf("DB_DSN is required when DB_BACKEND=mariadb")
+		return errors.New("DB_DSN is required when DB_BACKEND=mariadb")
 	}
 
 	if c.Port < 1 || c.Port > 65535 {

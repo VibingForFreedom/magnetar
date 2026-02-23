@@ -179,13 +179,15 @@ func IsAdult(name string) bool {
 // It checks both the torrent name and file extensions.
 // This should be called BEFORE Classify to avoid wasting work.
 func IsJunk(name string, files []File) bool {
+	cfg := loadFilterCfg()
+
 	// Adult content detection (pattern-based — JAV codes, studios, keywords)
-	if filterCfg.FilterAdultPatterns && IsAdult(name) {
+	if cfg.FilterAdultPatterns && IsAdult(name) {
 		return true
 	}
 
 	// Name-based rejection: strong software/game signals
-	if filterCfg.FilterJunkNames {
+	if cfg.FilterJunkNames {
 		for _, p := range junkNamePatterns {
 			if p.MatchString(name) {
 				// Don't reject if the name ALSO has strong media signals
@@ -200,7 +202,7 @@ func IsJunk(name string, files []File) bool {
 	// Adult name detection: only check bare names without media signals.
 	// Legit media like "Jayden.Lee.2024.1080p.WEB-DL" has signals and skips this.
 	// A bare "Jayden Lee" has zero signals and gets checked against performer/studio lists.
-	if filterCfg.FilterAdultNames && !hasMediaSignals(name) && isAdultName(name) {
+	if cfg.FilterAdultNames && !hasMediaSignals(name) && isAdultName(name) {
 		return true
 	}
 

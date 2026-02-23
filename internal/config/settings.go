@@ -69,7 +69,10 @@ func (c *Config) ApplyOverrides(ctx context.Context, st SettingsStore) error {
 }
 
 // ApplySetting applies a single setting value to the live config fields.
+// Safe for concurrent use.
 func (c *Config) ApplySetting(key, value string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	switch key {
 	case KeyTrackerEnabled:
 		if b, err := strconv.ParseBool(value); err == nil {
